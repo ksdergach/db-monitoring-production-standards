@@ -36,7 +36,11 @@ from testcontainers.core.network import Network  # noqa: E402
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-MINIO_IMAGE = "minio/minio:RELEASE.2024-01-16T16-07-38Z"
+# The official ``minio/minio`` repository was removed from Docker Hub, so the
+# tests use Chainguard's public build of the same server. Its free tier only
+# publishes ``latest``; the entrypoint is the ``minio`` binary itself, so the
+# ``server ...`` command below works unchanged.
+MINIO_IMAGE = "cgr.dev/chainguard/minio:latest"
 ICEBERG_REST_IMAGE = "tabulario/iceberg-rest:0.10.0"
 
 BUCKET = "iceberg-test"
