@@ -420,7 +420,7 @@
 **Что сделать**
 1. Создать `ml/common.py`: `parse_ts`, `InsufficientDataError`, `MODELS_DIR` и `model_path(kind, table, project_id, metric=None)`. Имена файлов моделей не меняются: функция возвращает те же пути, что и сейчас.
 2. В модулях `ml/` заменить копии импортами из `ml.common`. Импорты вида `from ml.forecast import InsufficientDataError` должны продолжать работать.
-3. Перевести на `ml.common.MODELS_DIR` остальной код: `app/dashboard.py:264`, `scripts/reset_db.py:21–22`, `scripts/demo_prepare.py:47`.
+3. Перевести на `ml.common.MODELS_DIR` остальной код: `app/dashboard.py:280`, `scripts/reset_db.py:21–22`, `scripts/demo_prepare.py:47`.
 4. В тестах подмены `MODELS_DIR` перевести на `ml.common.MODELS_DIR`: 8 в `tests/test_anomaly_detector.py`, 11 в `tests/test_forecast.py`, 2 в `tests/test_demo_prepare.py`. Проверки (`assert`) не менять.
 
 **Готово, когда**
@@ -519,7 +519,7 @@
 - Отдельный процесс планировщика и несколько воркеров gunicorn. Для этого нужны Redis для Flask-Limiter и обязательный `FERNET_KEY`.
 - Атомарная запись файлов моделей (временный файл и `os.replace`).
 - Упростить 7 функций со сложностью выше 10, начиная с `collect_for_connection` (сложность 35).
-- Разбить `app/metrics_storage.py` (3136 строк) на модули.
+- Разбить `app/metrics_storage.py` (3243 строки) на модули.
 - Правила безопасности ruff `S` с разбором 205 срабатываний.
 - Удалить пустой пакет `api/`.
 - Dependabot для Poetry, GitHub Actions и Docker.
