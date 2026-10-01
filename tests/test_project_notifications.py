@@ -6,6 +6,7 @@ Covers:
 - DSNFilter scrubs Telegram bot tokens from logs
 - Cross-tenant isolation — one project's config does not leak to another
 """
+
 from __future__ import annotations
 
 import logging
@@ -36,10 +37,12 @@ def _fernet_key(monkeypatch):
 
 # ── CRUD ───────────────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def storage(tmp_path, monkeypatch):
     import app.metrics_storage as ms
     from app.config import settings
+
     db_path = tmp_path / "metrics.db"
     monkeypatch.setattr(settings, "MONITOR_DB_URL", f"sqlite:///{db_path}")
     monkeypatch.setattr(ms, "_engine", None)
@@ -52,6 +55,7 @@ def _seed_project(storage, *, slug="default", name="Default") -> str:
     import uuid
 
     from app.metrics_storage import create_project, create_user
+
     user = create_user(
         user_id=uuid.uuid4().hex,
         email=f"u-{uuid.uuid4().hex[:6]}@example.com",
@@ -85,8 +89,7 @@ def test_save_then_get_round_trip(storage):
     assert row["telegram_chat_id"] == "987654321"
     assert row["throttle_minutes"] == 15
     # Stored ciphertext decrypts back to the original.
-    assert crypto.decrypt_token(row["telegram_bot_token"]) == \
-        _FAKE_TG_TOKEN
+    assert crypto.decrypt_token(row["telegram_bot_token"]) == _FAKE_TG_TOKEN
 
 
 def test_get_project_notifications_normalizes_postgres_memoryview(storage, monkeypatch):
@@ -124,10 +127,16 @@ def test_save_is_upsert(storage):
     tok1 = crypto.encrypt_token(_FAKE_TG_TOKEN)
     tok2 = crypto.encrypt_token(_FAKE_TG_TOKEN_B)
     storage.save_project_notifications(
-        pid, telegram_bot_token=tok1, telegram_chat_id="111", throttle_minutes=30,
+        pid,
+        telegram_bot_token=tok1,
+        telegram_chat_id="111",
+        throttle_minutes=30,
     )
     storage.save_project_notifications(
-        pid, telegram_bot_token=tok2, telegram_chat_id="222", throttle_minutes=60,
+        pid,
+        telegram_bot_token=tok2,
+        telegram_chat_id="222",
+        throttle_minutes=60,
     )
     row = storage.get_project_notifications(pid)
     assert row["telegram_chat_id"] == "222"
@@ -164,6 +173,7 @@ def test_cascade_on_project_delete(storage):
     """If the parent project is removed, its notifications row goes too —
     matches the connections / metrics CASCADE pattern (#51, #53)."""
     from sqlalchemy import text
+
     pid = _seed_project(storage)
     storage.save_project_notifications(
         pid,
@@ -180,6 +190,7 @@ def test_cascade_on_project_delete(storage):
 
 # ── Migration: existing single-tenant throttle table ───────────────────────
 
+
 def test_old_telegram_throttle_table_gets_recreated(tmp_path, monkeypatch):
     """Pre-#143 DBs have telegram_throttle without project_id. The migration
     must rebuild the table with the new PK without crashing."""
@@ -192,13 +203,15 @@ def test_old_telegram_throttle_table_gets_recreated(tmp_path, monkeypatch):
     # Manually create old-style throttle table.
     eng = create_engine(f"sqlite:///{db_path}")
     with eng.begin() as conn:
-        conn.execute(text(
-            "CREATE TABLE telegram_throttle ("
-            "  table_name TEXT NOT NULL,"
-            "  event_key TEXT NOT NULL,"
-            "  last_sent_at TEXT NOT NULL,"
-            "  PRIMARY KEY (table_name, event_key))"
-        ))
+        conn.execute(
+            text(
+                "CREATE TABLE telegram_throttle ("
+                "  table_name TEXT NOT NULL,"
+                "  event_key TEXT NOT NULL,"
+                "  last_sent_at TEXT NOT NULL,"
+                "  PRIMARY KEY (table_name, event_key))"
+            )
+        )
     eng.dispose()
 
     # Now boot the app's storage layer pointing at this DB.
@@ -214,10 +227,12 @@ def test_old_telegram_throttle_table_gets_recreated(tmp_path, monkeypatch):
 
 # ── DSNFilter / log scrubber ───────────────────────────────────────────────
 
+
 def test_dsn_filter_scrubs_telegram_token():
     """#143: bot tokens in log lines must be masked, keeping the public
     bot_id but redacting the secret hash half."""
     from app.security import _scrub
+
     msg = "Sending via 0000000001:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA to chat 42"
     scrubbed = _scrub(msg)
     assert "AAAA" not in scrubbed
@@ -231,7 +246,10 @@ def test_dsn_filter_scrubs_token_in_exception():
     must catch BaseException too. We construct a plausible OperationalError
     string that contains a token."""
     from app.security import _scrub
-    err = RuntimeError("Telegram replied 401: token=0000000001:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA invalid")
+
+    err = RuntimeError(
+        "Telegram replied 401: token=0000000001:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA invalid"
+    )
     scrubbed = _scrub(err)
     assert "AAAA" not in scrubbed
     assert "0000000001:***" in scrubbed
@@ -241,14 +259,15 @@ def test_dsn_filter_does_not_touch_short_numbers():
     """The regex requires bot_id 8–12 digits + ':' + exact 35 hash chars.
     Random short numbers like ports or IDs must NOT trigger."""
     from app.security import _scrub
-    assert _scrub("connecting to host:5432 with user:42") == \
-        "connecting to host:5432 with user:42"
+
+    assert _scrub("connecting to host:5432 with user:42") == "connecting to host:5432 with user:42"
 
 
 def test_dsnfilter_via_logging_pipeline(caplog):
     """End-to-end through the real logging pipeline — install_log_record_scrubber
     rewrites msg/args at record construction so caplog sees the scrubbed value."""
     from app.security import install_log_record_scrubber
+
     install_log_record_scrubber()
 
     logger = logging.getLogger("test_143_token")
@@ -265,11 +284,13 @@ def test_dsnfilter_via_logging_pipeline(caplog):
 
 # ── Settings blueprint ─────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def app_(tmp_path, monkeypatch):
     import app.metrics_storage as ms_
     from app.app import create_app
     from app.config import settings
+
     db_path = tmp_path / "ob.db"
     monkeypatch.setattr(settings, "MONITOR_DB_URL", f"sqlite:///{db_path}")
     monkeypatch.setattr(ms_, "_engine", None)
@@ -278,16 +299,20 @@ def app_(tmp_path, monkeypatch):
     import app.api
     import app.dashboard
     import app.db
+
     def fake_list(schema=None):
         return []
+
     monkeypatch.setattr(app.db, "list_tables", fake_list)
     monkeypatch.setattr(app.api, "list_tables", fake_list)
 
-    return create_app({
-        "TESTING": True,
-        "LOGIN_DISABLED": False,
-        "WTF_CSRF_ENABLED": False,
-    })
+    return create_app(
+        {
+            "TESTING": True,
+            "LOGIN_DISABLED": False,
+            "WTF_CSRF_ENABLED": False,
+        }
+    )
 
 
 @pytest.fixture
@@ -303,6 +328,7 @@ def _register(client, email="u@example.com"):
     )
     from app.metrics_storage import get_user_by_email
     from app.projects import create_default_project_for
+
     user = get_user_by_email(email)
     if user:
         create_default_project_for(user["id"])
@@ -348,9 +374,11 @@ def test_save_encrypts_token_and_persists(client):
 
     # Pull project_id from session-backed ownership chain to look it up.
     from app.metrics_storage import get_project_by_slug, get_user_by_email
+
     user = get_user_by_email("save@example.com")
     project = get_project_by_slug(user["id"], "default")
     from app.metrics_storage import get_project_notifications
+
     row = get_project_notifications(project["id"])
     assert row is not None
     assert row["telegram_chat_id"] == "42"
@@ -383,6 +411,7 @@ def test_save_with_empty_token_keeps_old(client):
         get_project_notifications,
         get_user_by_email,
     )
+
     user = get_user_by_email("keep@example.com")
     project = get_project_by_slug(user["id"], "default")
     row = get_project_notifications(project["id"])
@@ -402,14 +431,14 @@ def test_disable_wipes_config(client):
             "throttle_minutes": "30",
         },
     )
-    resp = client.post("/projects/default/settings/notifications/disable",
-                       follow_redirects=False)
+    resp = client.post("/projects/default/settings/notifications/disable", follow_redirects=False)
     assert resp.status_code == 302
     from app.metrics_storage import (
         get_project_by_slug,
         get_project_notifications,
         get_user_by_email,
     )
+
     user = get_user_by_email("disable@example.com")
     project = get_project_by_slug(user["id"], "default")
     assert get_project_notifications(project["id"]) is None
@@ -451,6 +480,7 @@ def test_test_button_calls_send_message_without_persisting(client, monkeypatch):
         get_project_notifications,
         get_user_by_email,
     )
+
     user = get_user_by_email("test@example.com")
     project = get_project_by_slug(user["id"], "default")
     assert get_project_notifications(project["id"]) is None
@@ -485,6 +515,7 @@ def test_test_button_audits_failed_send(client, monkeypatch):
         get_project_by_slug,
         get_user_by_email,
     )
+
     user = get_user_by_email("test-failed@example.com")
     project = get_project_by_slug(user["id"], "default")
     rows = get_notifications(project_id=project["id"])

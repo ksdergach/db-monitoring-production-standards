@@ -28,17 +28,19 @@ from app.security import _scrub
 # ── AWS Access Key ID ────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("input_str, expected_replacement", [
-    ("AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE",
-        "AWS_ACCESS_KEY_ID=***"),
-    ("AKIAIOSFODNN7EXAMPLE",
-        "***"),
-    ("token=ASIA1234567890ABCDEF",
-        "token=***"),
-    # внутри длинного traceback-style message
-    ("ClientError(AccessDenied): user AKIAIOSFODNN7EXAMPLE",
-        "ClientError(AccessDenied): user ***"),
-])
+@pytest.mark.parametrize(
+    "input_str, expected_replacement",
+    [
+        ("AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE", "AWS_ACCESS_KEY_ID=***"),
+        ("AKIAIOSFODNN7EXAMPLE", "***"),
+        ("token=ASIA1234567890ABCDEF", "token=***"),
+        # внутри длинного traceback-style message
+        (
+            "ClientError(AccessDenied): user AKIAIOSFODNN7EXAMPLE",
+            "ClientError(AccessDenied): user ***",
+        ),
+    ],
+)
 def test_scrub_masks_aws_access_key(input_str, expected_replacement):
     out = _scrub(input_str)
     assert out == expected_replacement
@@ -59,15 +61,18 @@ def test_scrub_does_not_match_short_uppercase(monkeypatch):
 # ── AWS / S3 secret в key=value ─────────────────────────────────────────
 
 
-@pytest.mark.parametrize("input_str", [
-    # Real-shape AWS secrets — 40 char base64-ish. Regex требует >=16
-    # чтобы не ловить случайные ID типа key=2025-01-15.
-    "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-    "aws_secret_access_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-    "secret_access_key=wJalrXUtnFEMIabcdefghijklmnopqrstuvwxyz",
-    "s3.secret-access-key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-    "access_key_secret=wJalrXUtnFEMIabcdefghijklmnopqrstuvwxyz",
-])
+@pytest.mark.parametrize(
+    "input_str",
+    [
+        # Real-shape AWS secrets — 40 char base64-ish. Regex требует >=16
+        # чтобы не ловить случайные ID типа key=2025-01-15.
+        "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+        "aws_secret_access_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+        "secret_access_key=wJalrXUtnFEMIabcdefghijklmnopqrstuvwxyz",
+        "s3.secret-access-key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+        "access_key_secret=wJalrXUtnFEMIabcdefghijklmnopqrstuvwxyz",
+    ],
+)
 def test_scrub_masks_secret_access_key_form(input_str):
     """ANY вариант ключа с secret_access_key или access_key_secret должен
     получать ***. Сам ключ-имя сохраняется (он публичный)."""
@@ -92,16 +97,18 @@ def test_scrub_preserves_key_name():
 # ── Bearer / Token auth ─────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("input_str, expected", [
-    ("Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig",
-        "Authorization: Bearer ***"),
-    ("Bearer abc123def456",
-        "Bearer ***"),
-    ("token Token raw-token-value-xyz",
-        "token Token ***"),
-    ("rest.authorization-header: Bearer xyz1234567890abc",
-        "rest.authorization-header: Bearer ***"),
-])
+@pytest.mark.parametrize(
+    "input_str, expected",
+    [
+        ("Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig", "Authorization: Bearer ***"),
+        ("Bearer abc123def456", "Bearer ***"),
+        ("token Token raw-token-value-xyz", "token Token ***"),
+        (
+            "rest.authorization-header: Bearer xyz1234567890abc",
+            "rest.authorization-header: Bearer ***",
+        ),
+    ],
+)
 def test_scrub_masks_bearer_tokens(input_str, expected):
     out = _scrub(input_str)
     assert out == expected
@@ -153,6 +160,7 @@ def health_client(tmp_path, monkeypatch):
     monkeypatch.setattr(storage, "_initialized", False)
 
     import app.db
+
     monkeypatch.setattr(app.db, "list_tables", lambda schema=None: [])
 
     return create_app({"TESTING": True}).test_client()
@@ -169,7 +177,7 @@ def test_healthz_payload_does_not_contain_secrets(health_client):
     # Реальный пароль не должен утекать — проверяем паттерны credentials,
     # а не слово "password", которое может быть в тексте ошибки драйвера
     # (например, psycopg2: "password authentication failed for user").
-    assert "password=" not in body.lower()          # URL-параметр ?password=secret
+    assert "password=" not in body.lower()  # URL-параметр ?password=secret
     assert not re.search(r"://[^:@/]+:[^@/]+@", body)  # DSN с кредами user:pass@host
     # AWS key / Bearer
     assert not re.search(r"AKIA[0-9A-Z]{16}", body)
@@ -203,8 +211,7 @@ def test_probe_iceberg_user_message_does_not_leak_aws_secret(monkeypatch):
         lambda dsn: FakeAdapter(),
     )
     # Чтобы Iceberg-ветка действительно вошла:
-    monkeypatch.setattr(connections, "make_adapter_for_url",
-                        make_adapter_for_url, raising=False)
+    monkeypatch.setattr(connections, "make_adapter_for_url", make_adapter_for_url, raising=False)
 
     result = connections._probe_iceberg("iceberg+rest://localhost")
     blob = " ".join(str(v) for v in result.values() if isinstance(v, str | int))
@@ -224,17 +231,20 @@ def test_probe_clickhouse_user_message_does_not_leak_secret(monkeypatch):
     class FakeEngine:
         def connect(self):
             raise OperationalError(
-                "SELECT 1", {},
+                "SELECT 1",
+                {},
                 Exception(
                     "Auth failed with token=Bearer leak-this-token-please "
                     "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI"
                 ),
             )
+
         def dispose(self):
             pass
 
     monkeypatch.setattr(
-        connections, "create_engine",
+        connections,
+        "create_engine",
         lambda *a, **kw: FakeEngine(),
     )
     result = connections._probe_clickhouse("clickhouse://localhost:9000/demo")

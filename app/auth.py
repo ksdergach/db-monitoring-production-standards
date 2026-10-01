@@ -111,8 +111,9 @@ class RegisterForm(FlaskForm):
         "Пароль",
         validators=[
             DataRequired(),
-            Length(min=_PASSWORD_MIN, max=_PASSWORD_MAX,
-                   message=f"Минимум {_PASSWORD_MIN} символов."),
+            Length(
+                min=_PASSWORD_MIN, max=_PASSWORD_MAX, message=f"Минимум {_PASSWORD_MIN} символов."
+            ),
         ],
         render_kw={"autocomplete": "new-password"},
     )
@@ -156,8 +157,9 @@ class ResetPasswordForm(FlaskForm):
         "Новый пароль",
         validators=[
             DataRequired(),
-            Length(min=_PASSWORD_MIN, max=_PASSWORD_MAX,
-                   message=f"Минимум {_PASSWORD_MIN} символов."),
+            Length(
+                min=_PASSWORD_MIN, max=_PASSWORD_MAX, message=f"Минимум {_PASSWORD_MIN} символов."
+            ),
         ],
         render_kw={"autocomplete": "new-password", "autofocus": True},
     )
@@ -246,8 +248,7 @@ def _forgot_password_key() -> str:
 
 
 @bp.route("/forgot-password", methods=["GET", "POST"])
-@limiter.limit("1 per minute;5 per 15 minutes",
-                methods=["POST"], key_func=_forgot_password_key)
+@limiter.limit("1 per minute;5 per 15 minutes", methods=["POST"], key_func=_forgot_password_key)
 def forgot_password():
     """Issue a password-reset token, email it to the user.
 
@@ -267,8 +268,7 @@ def forgot_password():
         if row is not None:
             if not settings.smtp_configured:
                 logger.warning(
-                    "forgot-password: SMTP not configured; reset email "
-                    "captured in memory backend"
+                    "forgot-password: SMTP not configured; reset email captured in memory backend"
                 )
             # Invalidate any active tokens first — only the latest email
             # should resolve. Then mint + persist + send.
@@ -279,17 +279,14 @@ def forgot_password():
                 token_hash=_hash_reset_token(raw_token),
                 expires_at=datetime.now(UTC) + _RESET_TOKEN_TTL,
             )
-            reset_url = (
-                settings.APP_BASE_URL.rstrip("/")
-                + url_for("auth.reset_password", token=raw_token)
+            reset_url = settings.APP_BASE_URL.rstrip("/") + url_for(
+                "auth.reset_password", token=raw_token
             )
             send_password_reset_email(email, reset_url)
         else:
             # Unknown email: log it for ops but DO NOT differentiate the
             # response. Repeated probes will hit the rate limit normally.
-            logger.info(
-                "forgot-password: email not registered (rate-limited normally)"
-            )
+            logger.info("forgot-password: email not registered (rate-limited normally)")
         flash(
             "Если такой email зарегистрирован, мы отправили на него ссылку "
             "для сброса пароля. Срок действия — 1 час.",
@@ -321,29 +318,30 @@ def reset_password(token: str):
         # Pre-validate so we can show the form vs the error page. POST
         # re-checks via the atomic consume_* below — no TOCTOU window.
         if metrics_storage.get_active_password_reset_token(token_hash) is None:
-            return render_template("auth/reset_password.html",
-                                    form=form, error=_RESET_GENERIC_ERROR), 400
-        return render_template("auth/reset_password.html",
-                                form=form, error=None)
+            return render_template(
+                "auth/reset_password.html", form=form, error=_RESET_GENERIC_ERROR
+            ), 400
+        return render_template("auth/reset_password.html", form=form, error=None)
 
     if form.validate_on_submit():
         user_id = metrics_storage.consume_password_reset_token(token_hash)
         if user_id is None:
-            return render_template("auth/reset_password.html",
-                                    form=form, error=_RESET_GENERIC_ERROR), 400
+            return render_template(
+                "auth/reset_password.html", form=form, error=_RESET_GENERIC_ERROR
+            ), 400
         # Update password and invalidate all other active tokens for this
         # user (someone may have requested several resets; the consumed
         # one wins, the rest die). Two separate writes are fine — the
         # token we just consumed is already marked used.
         metrics_storage.update_user_password(
-            user_id, generate_password_hash(form.password.data),
+            user_id,
+            generate_password_hash(form.password.data),
         )
         metrics_storage.invalidate_password_reset_tokens(user_id)
         flash("Пароль обновлён. Войдите с новым паролем.", "success")
         return redirect(url_for("auth.login"))
 
-    return render_template("auth/reset_password.html",
-                            form=form, error=None)
+    return render_template("auth/reset_password.html", form=form, error=None)
 
 
 @bp.route("/register", methods=["GET", "POST"])
@@ -431,6 +429,7 @@ def login():
         # don't init the registry from breaking the login flow.
         try:
             from app.instrumentation import failed_login_attempts_total
+
             failed_login_attempts_total.inc()
         except ImportError:
             pass

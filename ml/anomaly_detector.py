@@ -17,6 +17,7 @@ convention). The raw score is stored as-is so the threshold stays stable
 across queries of different widths — unlike min-max normalisation which
 shifts with every request.
 """
+
 from __future__ import annotations
 
 import logging
@@ -31,6 +32,7 @@ try:
     import numpy as np
     from sklearn.ensemble import IsolationForest
     from sklearn.preprocessing import StandardScaler
+
     _HAS_SKLEARN = True
 except Exception:  # pragma: no cover
     np = None  # type: ignore
@@ -40,6 +42,7 @@ except Exception:  # pragma: no cover
 
 try:
     import joblib as _joblib
+
     _HAS_JOBLIB = True
 except Exception:  # pragma: no cover
     _joblib = None  # type: ignore
@@ -194,9 +197,7 @@ def score_table(
             f"check write permissions on {MODELS_DIR}"
         )
 
-    timestamps, X = _load_features(
-        table, window=timedelta(days=window_days), project_id=project_id
-    )
+    timestamps, X = _load_features(table, window=timedelta(days=window_days), project_id=project_id)
     if len(timestamps) == 0:
         return []
 
@@ -217,9 +218,7 @@ def score_table(
     ]
 
 
-def feature_breakdown(
-    table: str, window: timedelta, project_id: str = "legacy"
-) -> dict[str, dict]:
+def feature_breakdown(table: str, window: timedelta, project_id: str = "legacy") -> dict[str, dict]:
     """Return per-tick feature values and z-scores for *table* over *window*.
 
     Maps ts (ISO str) → {values, z_scores, top_feature}. The z-scores come
@@ -261,9 +260,7 @@ def feature_breakdown(
     return out
 
 
-def retrain_all(
-    project_id: str = "legacy", tables: Iterable[str] | None = None
-) -> dict[str, int]:
+def retrain_all(project_id: str = "legacy", tables: Iterable[str] | None = None) -> dict[str, int]:
     """Retrain anomaly models for every monitored table. Used by the nightly job."""
     if tables is None:
         from app.db import list_tables

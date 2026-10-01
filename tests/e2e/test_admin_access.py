@@ -34,17 +34,21 @@ def admin_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     storage между тест-кейсами.
     """
     import os
+
     os.environ["FERNET_KEY"] = Fernet.generate_key().decode()
 
     from app import crypto
+
     crypto.reset_for_tests()
 
     metrics_db = tmp_path_factory.mktemp("e2e-admin") / "metrics.db"
 
     from app.config import settings
+
     settings.MONITOR_DB_URL = f"sqlite:///{metrics_db}"
 
     from app import metrics_storage
+
     metrics_storage._engine = None
     metrics_storage._initialized = False
     metrics_storage.get_engine()
@@ -52,6 +56,7 @@ def admin_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     # Stub db introspection — иначе apsheduler / dashboard будут лезть
     # в реальный DATABASE_URL, что нам не нужно.
     from app import db
+
     originals = {
         "list_tables": db.list_tables,
         "table_schema": db.table_schema,
@@ -67,12 +72,14 @@ def admin_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
 
     from app.app import create_app
 
-    app = create_app({
-        "TESTING": True,
-        "LOGIN_DISABLED": False,  # реально проверяем гейт
-        "WTF_CSRF_ENABLED": False,
-        "RATELIMIT_ENABLED": False,
-    })
+    app = create_app(
+        {
+            "TESTING": True,
+            "LOGIN_DISABLED": False,  # реально проверяем гейт
+            "WTF_CSRF_ENABLED": False,
+            "RATELIMIT_ENABLED": False,
+        }
+    )
     port = _free_port()
 
     from werkzeug.serving import make_server

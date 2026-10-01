@@ -60,7 +60,8 @@ def ensure_timescale_running(timeout_s: int = 60) -> None:
     logger.info("Запускаю timescaledb...")
     subprocess.run(
         ["docker", "compose", "up", "-d", "timescaledb"],
-        cwd=REPO_ROOT, check=True,
+        cwd=REPO_ROOT,
+        check=True,
     )
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
@@ -76,7 +77,9 @@ def _container_health(name: str) -> str:
     try:
         result = subprocess.run(
             ["docker", "inspect", "-f", "{{.State.Health.Status}}", name],
-            capture_output=True, text=True, check=False,
+            capture_output=True,
+            text=True,
+            check=False,
         )
         return result.stdout.strip() if result.returncode == 0 else "absent"
     except (FileNotFoundError, OSError):
@@ -88,7 +91,8 @@ def run_demo_prepare() -> None:
     logger.info("Запускаю make demo-prepare...")
     subprocess.run(
         [sys.executable, "-m", "scripts.demo_prepare"],
-        cwd=REPO_ROOT, check=True,
+        cwd=REPO_ROOT,
+        check=True,
     )
 
 
@@ -114,19 +118,20 @@ def verify_via_healthz(url: str, timeout_s: int = 10) -> bool:
             return False
         except (urllib.error.URLError, json.JSONDecodeError, OSError):
             time.sleep(2)
-    logger.warning("Не смог достучаться до %s за %ds — app не запущен?",
-                    url, timeout_s)
+    logger.warning("Не смог достучаться до %s за %ds — app не запущен?", url, timeout_s)
     return False
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument(
-        "--skip-demo-prepare", action="store_true",
+        "--skip-demo-prepare",
+        action="store_true",
         help="Только preserve broken-файла + запуск Timescale, не seed",
     )
     parser.add_argument(
-        "--skip-timescale-up", action="store_true",
+        "--skip-timescale-up",
+        action="store_true",
         help="Не пытаться поднимать timescaledb (если на host-Timescale)",
     )
     parser.add_argument(
@@ -136,7 +141,8 @@ def main() -> int:
     )
     args = parser.parse_args()
     logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s",
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
     )
 
     print("[1/4] Preserve broken monitor.db")
@@ -160,8 +166,7 @@ def main() -> int:
         return 0
     else:
         print(
-            "\n⚠️ /healthz не подтвердил Timescale-backend — "
-            "проверь app логи и docker compose ps."
+            "\n⚠️ /healthz не подтвердил Timescale-backend — проверь app логи и docker compose ps."
         )
         return 1
 

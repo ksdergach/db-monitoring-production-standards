@@ -50,9 +50,7 @@ def test_seed_demo_workspace_creates_users_projects_connections(tmp_path, monkey
     assert len(retail_connections) == 1
     encrypted = retail_connections[0]["dsn_encrypted"]
     assert b"postgres:dev" not in encrypted
-    assert crypto.decrypt_dsn(encrypted) == (
-        "postgresql://postgres:dev@localhost:5432/monitor"
-    )
+    assert crypto.decrypt_dsn(encrypted) == ("postgresql://postgres:dev@localhost:5432/monitor")
 
 
 def test_seed_demo_workspace_is_idempotent(tmp_path, monkeypatch):
@@ -69,14 +67,15 @@ def test_seed_demo_workspace_is_idempotent(tmp_path, monkeypatch):
     first = seed_demo_workspace(**kwargs)
     second = seed_demo_workspace(**kwargs)
 
-    assert first["users"]["demo@dbmonitor.app"]["id"] == (
-        second["users"]["demo@dbmonitor.app"]["id"]
+    assert (
+        first["users"]["demo@dbmonitor.app"]["id"] == (second["users"]["demo@dbmonitor.app"]["id"])
     )
-    assert first["projects"]["retail-postgres"]["id"] == (
-        second["projects"]["retail-postgres"]["id"]
+    assert (
+        first["projects"]["retail-postgres"]["id"] == (second["projects"]["retail-postgres"]["id"])
     )
-    assert first["connections"]["retail-postgres"]["id"] == (
-        second["connections"]["retail-postgres"]["id"]
+    assert (
+        first["connections"]["retail-postgres"]["id"]
+        == (second["connections"]["retail-postgres"]["id"])
     )
 
     demo = storage.get_user_by_email("demo@dbmonitor.app")

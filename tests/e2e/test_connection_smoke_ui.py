@@ -41,17 +41,21 @@ def _mock_probe(_dsn: str, **_kwargs) -> dict:
 @pytest.fixture(scope="module")
 def smoke_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     import os
+
     os.environ["FERNET_KEY"] = Fernet.generate_key().decode()
 
     from app import crypto
+
     crypto.reset_for_tests()
 
     metrics_db = tmp_path_factory.mktemp("e2e-smoke") / "metrics.db"
 
     from app.config import settings
+
     settings.MONITOR_DB_URL = f"sqlite:///{metrics_db}"
 
     from app import connections, metrics_storage
+
     metrics_storage._engine = None
     metrics_storage._initialized = False
     metrics_storage.get_engine()
@@ -62,6 +66,7 @@ def smoke_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     connections.probe_connection = _mock_probe
 
     from app import db
+
     originals = {
         "list_tables": db.list_tables,
         "table_schema": db.table_schema,
@@ -77,12 +82,14 @@ def smoke_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
 
     from app.app import create_app
 
-    app = create_app({
-        "TESTING": True,
-        "LOGIN_DISABLED": False,
-        "WTF_CSRF_ENABLED": False,
-        "RATELIMIT_ENABLED": False,
-    })
+    app = create_app(
+        {
+            "TESTING": True,
+            "LOGIN_DISABLED": False,
+            "WTF_CSRF_ENABLED": False,
+            "RATELIMIT_ENABLED": False,
+        }
+    )
     port = _free_port()
 
     from werkzeug.serving import make_server
@@ -140,12 +147,14 @@ def _add_connection(page: Page, base: str, slug: str) -> None:
     # auto-test ok), либо на /connections (auto-test error). Оба
     # подходят — главное чтобы ушли с /connections/new.
     page.wait_for_url(
-        lambda url: "/connections/new" not in url, timeout=5_000,
+        lambda url: "/connections/new" not in url,
+        timeout=5_000,
     )
 
 
 def test_smoke_check_shows_tables_privileges_and_write_warning(
-    smoke_server: str, page: Page,
+    smoke_server: str,
+    page: Page,
 ):
     """Главный happy path #229 + #230: видим preview, privileges, warning."""
     global _PROBE_RESULT
@@ -186,7 +195,8 @@ def test_smoke_check_shows_tables_privileges_and_write_warning(
 
 
 def test_smoke_check_shows_no_select_permission_error(
-    smoke_server: str, page: Page,
+    smoke_server: str,
+    page: Page,
 ):
     """Acceptance #229: USAGE=false → UI показывает code/message."""
     global _PROBE_RESULT

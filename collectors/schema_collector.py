@@ -9,6 +9,7 @@ saved without producing any events — there's no baseline to compare
 against, and treating the first observation as "everything was added"
 would spam alerts.
 """
+
 from __future__ import annotations
 
 import logging
@@ -51,50 +52,58 @@ def diff_schemas(
 
     for name, col in after_map.items():
         if name not in before_map:
-            events.append({
-                "ts": ts_iso,
-                "table_name": table_name,
-                "change_type": "column_added",
-                "column_name": name,
-                "details": {"after": col},
-            })
+            events.append(
+                {
+                    "ts": ts_iso,
+                    "table_name": table_name,
+                    "change_type": "column_added",
+                    "column_name": name,
+                    "details": {"after": col},
+                }
+            )
 
     for name, col in before_map.items():
         if name not in after_map:
-            events.append({
-                "ts": ts_iso,
-                "table_name": table_name,
-                "change_type": "column_removed",
-                "column_name": name,
-                "details": {"before": col},
-            })
+            events.append(
+                {
+                    "ts": ts_iso,
+                    "table_name": table_name,
+                    "change_type": "column_removed",
+                    "column_name": name,
+                    "details": {"before": col},
+                }
+            )
 
     for name, before_col in before_map.items():
         after_col = after_map.get(name)
         if after_col is None:
             continue
         if (before_col.get("type") or "") != (after_col.get("type") or ""):
-            events.append({
-                "ts": ts_iso,
-                "table_name": table_name,
-                "change_type": "type_changed",
-                "column_name": name,
-                "details": {
-                    "before": {"type": before_col.get("type")},
-                    "after": {"type": after_col.get("type")},
-                },
-            })
+            events.append(
+                {
+                    "ts": ts_iso,
+                    "table_name": table_name,
+                    "change_type": "type_changed",
+                    "column_name": name,
+                    "details": {
+                        "before": {"type": before_col.get("type")},
+                        "after": {"type": after_col.get("type")},
+                    },
+                }
+            )
         if bool(before_col.get("nullable")) != bool(after_col.get("nullable")):
-            events.append({
-                "ts": ts_iso,
-                "table_name": table_name,
-                "change_type": "nullable_changed",
-                "column_name": name,
-                "details": {
-                    "before": {"nullable": bool(before_col.get("nullable"))},
-                    "after": {"nullable": bool(after_col.get("nullable"))},
-                },
-            })
+            events.append(
+                {
+                    "ts": ts_iso,
+                    "table_name": table_name,
+                    "change_type": "nullable_changed",
+                    "column_name": name,
+                    "details": {
+                        "before": {"nullable": bool(before_col.get("nullable"))},
+                        "after": {"nullable": bool(after_col.get("nullable"))},
+                    },
+                }
+            )
 
     return events
 
@@ -141,8 +150,7 @@ def collect_all_schemas(project_id: str = "legacy") -> dict[str, Any]:
             )
             counts["events"] += len(events)
         except Exception as exc:  # pragma: no cover - defensive
-            logger.exception("Schema collection failed for %s: %s",
-                             entry["table_name"], exc)
+            logger.exception("Schema collection failed for %s: %s", entry["table_name"], exc)
             counts["errors"] += 1
     logger.info("Schema sweep finished: %s", counts)
     return counts

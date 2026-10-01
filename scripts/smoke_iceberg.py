@@ -35,13 +35,15 @@ WAREHOUSE = f"s3://{BUCKET}/warehouse"
 REST_HOST = os.getenv("ICEBERG_REST_HOST", "localhost:8181")
 
 # S3 properties forwarded to IcebergAdapter so file I/O hits MinIO, not AWS.
-_DSN_PARAMS = urlencode({
-    "warehouse": WAREHOUSE,
-    "s3.endpoint": MINIO_ENDPOINT,
-    "s3.access-key-id": MINIO_USER,
-    "s3.secret-access-key": MINIO_PASSWORD,
-    "s3.path-style-access": "true",
-})
+_DSN_PARAMS = urlencode(
+    {
+        "warehouse": WAREHOUSE,
+        "s3.endpoint": MINIO_ENDPOINT,
+        "s3.access-key-id": MINIO_USER,
+        "s3.secret-access-key": MINIO_PASSWORD,
+        "s3.path-style-access": "true",
+    }
+)
 DSN = f"iceberg+rest://{REST_HOST}?{_DSN_PARAMS}"
 
 NAMESPACE = "smoke_ns"
@@ -49,9 +51,9 @@ TABLE = "orders"
 
 # Rows: id, customer (1 NULL), amount (1 NULL)
 ROWS = {
-    "id":       [1,       2,     3,     4,      5],
-    "customer": ["Alice", "Bob", None,  "Dave", "Eve"],
-    "amount":   [100,     200,   150,   None,   300],
+    "id": [1, 2, 3, 4, 5],
+    "customer": ["Alice", "Bob", None, "Dave", "Eve"],
+    "amount": [100, 200, 150, None, 300],
 }
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -148,16 +150,21 @@ def setup_catalog() -> None:
     _ok(f"table {NAMESPACE}.{TABLE!r} created")
 
     table = catalog.load_table((NAMESPACE, TABLE))
-    arrow_schema = pa.schema([
-        pa.field("id", pa.int64(), nullable=False),
-        pa.field("customer", pa.string(), nullable=True),
-        pa.field("amount", pa.int32(), nullable=True),
-    ])
-    arrow_table = pa.table({
-        "id":       pa.array(ROWS["id"], type=pa.int64()),
-        "customer": pa.array(ROWS["customer"], type=pa.string()),
-        "amount":   pa.array(ROWS["amount"], type=pa.int32()),
-    }, schema=arrow_schema)
+    arrow_schema = pa.schema(
+        [
+            pa.field("id", pa.int64(), nullable=False),
+            pa.field("customer", pa.string(), nullable=True),
+            pa.field("amount", pa.int32(), nullable=True),
+        ]
+    )
+    arrow_table = pa.table(
+        {
+            "id": pa.array(ROWS["id"], type=pa.int64()),
+            "customer": pa.array(ROWS["customer"], type=pa.string()),
+            "amount": pa.array(ROWS["amount"], type=pa.int32()),
+        },
+        schema=arrow_schema,
+    )
     table.append(arrow_table)
     _ok(f"wrote {len(ROWS['id'])} rows (1 NULL in customer, 1 NULL in amount)")
 
@@ -170,6 +177,7 @@ def run_adapter() -> None:
     print(f"  DSN: {DSN}")
 
     from app.db import make_adapter_for_url
+
     adapter = make_adapter_for_url(DSN)
 
     # list_tables
@@ -239,15 +247,18 @@ def run_collector() -> None:
     os.close(fd)
 
     import app.metrics_storage as storage
+
     storage.settings.MONITOR_DB_URL = f"sqlite:///{db_path}"
-    storage._engine = None        # force get_engine() to rebuild with new URL
+    storage._engine = None  # force get_engine() to rebuild with new URL
     storage._initialized = False
 
     # Fresh Fernet key so DSN encryption/decryption is self-contained.
     from cryptography.fernet import Fernet
+
     os.environ["FERNET_KEY"] = Fernet.generate_key().decode()
     import app.crypto as crypto_mod
-    crypto_mod._fernet = None     # force re-init with new key
+
+    crypto_mod._fernet = None  # force re-init with new key
 
     from app import crypto
     from app.metrics_storage import (

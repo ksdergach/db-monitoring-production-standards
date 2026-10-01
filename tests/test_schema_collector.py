@@ -55,10 +55,7 @@ def test_column_removed():
 
 
 def test_type_changed():
-    after = [
-        {**c, "type": "bigint"} if c["name"] == "age" else c
-        for c in _BASE
-    ]
+    after = [{**c, "type": "bigint"} if c["name"] == "age" else c for c in _BASE]
     events = diff_schemas("users", _BASE, after)
     assert len(events) == 1
     e = events[0]
@@ -68,10 +65,7 @@ def test_type_changed():
 
 
 def test_nullable_changed():
-    after = [
-        {**c, "nullable": False} if c["name"] == "email" else c
-        for c in _BASE
-    ]
+    after = [{**c, "nullable": False} if c["name"] == "email" else c for c in _BASE]
     events = diff_schemas("users", _BASE, after)
     assert len(events) == 1
     assert events[0]["change_type"] == "nullable_changed"
@@ -82,7 +76,7 @@ def test_multiple_changes_at_once():
     after = [
         {"name": "id", "type": "uuid", "nullable": False},
         # email removed
-        {"name": "age", "type": "bigint", "nullable": True},   # type changed
+        {"name": "age", "type": "bigint", "nullable": True},  # type changed
         {"name": "country", "type": "text", "nullable": False},  # added
     ]
     events = diff_schemas("users", _BASE, after)
@@ -94,11 +88,14 @@ def test_multiple_changes_at_once():
 # Storage round-trip + collector integration (real SQLite engine)
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def clean_metrics(tmp_path, monkeypatch):
     from app.config import settings
-    monkeypatch.setattr(settings, "MONITOR_DB_URL", f"sqlite:///{tmp_path/'m.db'}")
+
+    monkeypatch.setattr(settings, "MONITOR_DB_URL", f"sqlite:///{tmp_path / 'm.db'}")
     import app.metrics_storage as ms
+
     monkeypatch.setattr(ms, "_engine", None)
     monkeypatch.setattr(ms, "_initialized", False)
     yield
@@ -113,13 +110,17 @@ def test_snapshot_round_trip(clean_metrics):
 
 
 def test_save_and_get_events(clean_metrics):
-    save_schema_events([{
-        "ts": datetime.now(UTC).isoformat(timespec="seconds"),
-        "table_name": "orders",
-        "change_type": "column_added",
-        "column_name": "discount",
-        "details": {"after": {"type": "numeric"}},
-    }])
+    save_schema_events(
+        [
+            {
+                "ts": datetime.now(UTC).isoformat(timespec="seconds"),
+                "table_name": "orders",
+                "change_type": "column_added",
+                "column_name": "discount",
+                "details": {"after": {"type": "numeric"}},
+            }
+        ]
+    )
     events = get_schema_events("orders")
     assert len(events) == 1
     assert events[0]["change_type"] == "column_added"
@@ -159,6 +160,7 @@ def test_collect_table_schema_idempotent_on_no_change(clean_metrics):
 # /api/schema/<table>/changes
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def client():
     app = create_app({"TESTING": True})
@@ -167,9 +169,15 @@ def client():
 
 
 def test_changes_endpoint_returns_events(client):
-    payload = [{"ts": "2026-05-01T10:00:00+00:00", "table_name": "users",
-                "change_type": "column_added", "column_name": "country",
-                "details": {"after": {"type": "text"}}}]
+    payload = [
+        {
+            "ts": "2026-05-01T10:00:00+00:00",
+            "table_name": "users",
+            "change_type": "column_added",
+            "column_name": "country",
+            "details": {"after": {"type": "text"}},
+        }
+    ]
     with patch("app.api.get_schema_events", return_value=payload):
         resp = client.get("/api/schema/users/changes")
     assert resp.status_code == 200

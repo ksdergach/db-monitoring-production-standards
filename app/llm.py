@@ -53,8 +53,10 @@ def _summary_stats(values: list[float]) -> dict | None:
 
 
 def _format_history_block(
-    rc_stats: dict | None, current_rc: float | None,
-    nr_stats: dict | None, current_nr: float | None,
+    rc_stats: dict | None,
+    current_rc: float | None,
+    nr_stats: dict | None,
+    current_nr: float | None,
 ) -> str:
     """Human-readable history block for the prompt. Empty string if no
     historical stats — avoids planting a placeholder that the LLM might
@@ -83,14 +85,12 @@ def _format_history_block(
     return "Historical context:\n" + "\n".join(f"  {ln}" for ln in lines)
 
 
-def _build_prompt(
-    table: str, metric: str, ts: str, project_id: str = "legacy"
-) -> str:
+def _build_prompt(table: str, metric: str, ts: str, project_id: str = "legacy") -> str:
     schema = get_schema_snapshot(table) or []
-    schema_text = ", ".join(
-        f"{c['name']} {c['type']}{'?' if c.get('nullable') else ''}"
-        for c in schema
-    ) or "unknown"
+    schema_text = (
+        ", ".join(f"{c['name']} {c['type']}{'?' if c.get('nullable') else ''}" for c in schema)
+        or "unknown"
+    )
 
     window = _context_window(ts)
     recent_rc = get_metrics(table, "row_count", project_id, window=window)
@@ -108,22 +108,17 @@ def _build_prompt(
     def _fmt(raw_ts: str) -> str:
         return raw_ts[:16].replace("T", " ") + " UTC"
 
-    rc_sample = [
-        f"{_fmt(r['ts'])}: {int(r['value'])}" for r in recent_rc[-10:]
-    ]
-    nr_sample = [
-        f"{_fmt(r['ts'])}: {r['value']:.3f}" for r in recent_nr[-10:]
-    ]
-    cp_text = "\n".join(
-        f"  {_fmt(c['ts'])} {c['metric_name']}: {c['value_before']:.2f} → {c['value_after']:.2f}"
-        for c in changepoints
-    ) or "  none"
-    anomaly_at_ts = next(
-        (a for a in anomaly_scores if a["ts"] == ts and a["is_anomaly"]), None
+    rc_sample = [f"{_fmt(r['ts'])}: {int(r['value'])}" for r in recent_rc[-10:]]
+    nr_sample = [f"{_fmt(r['ts'])}: {r['value']:.3f}" for r in recent_nr[-10:]]
+    cp_text = (
+        "\n".join(
+            f"  {_fmt(c['ts'])} {c['metric_name']}: {c['value_before']:.2f} → {c['value_after']:.2f}"
+            for c in changepoints
+        )
+        or "  none"
     )
-    anomaly_score_text = (
-        f"{anomaly_at_ts['score']:.4f}" if anomaly_at_ts else "not available"
-    )
+    anomaly_at_ts = next((a for a in anomaly_scores if a["ts"] == ts and a["is_anomaly"]), None)
+    anomaly_score_text = f"{anomaly_at_ts['score']:.4f}" if anomaly_at_ts else "not available"
     ts_fmt = _fmt(ts)
 
     # #171: подмешиваем сводный исторический контекст — без него LLM
@@ -134,9 +129,7 @@ def _build_prompt(
     nr_stats = _summary_stats([r["value"] for r in recent_nr])
     current_rc = recent_rc[-1]["value"] if recent_rc else None
     current_nr = recent_nr[-1]["value"] if recent_nr else None
-    history_block = _format_history_block(
-        rc_stats, current_rc, nr_stats, current_nr
-    )
+    history_block = _format_history_block(rc_stats, current_rc, nr_stats, current_nr)
 
     return f"""You are a database reliability expert. Analyze the anomaly below and explain its root cause.
 
@@ -247,9 +240,7 @@ def _parse_nim_response(raw: str) -> dict:
     }
 
 
-def _rule_based_explain(
-    table: str, metric: str, ts: str, project_id: str = "legacy"
-) -> dict:
+def _rule_based_explain(table: str, metric: str, ts: str, project_id: str = "legacy") -> dict:
     """Template fallback when NIM is unavailable. confidence=0.3."""
     window = _context_window(ts)
     all_rc = get_metrics(table, "row_count", project_id, window=window)
@@ -316,9 +307,7 @@ def _rule_based_explain(
     }
 
 
-def explain_anomaly(
-    table: str, metric: str, ts: str, project_id: str = "legacy"
-) -> dict:
+def explain_anomaly(table: str, metric: str, ts: str, project_id: str = "legacy") -> dict:
     """Orchestrate LLM explanation with cache bypass (cache handled in the API layer).
 
     Returns {explanation, suggested_fix, confidence}.

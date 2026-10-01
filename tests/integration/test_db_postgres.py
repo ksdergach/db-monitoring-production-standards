@@ -40,20 +40,24 @@ def _seed(pg_container):
     raw_url = pg_container.get_connection_url()
     engine = create_engine(raw_url, future=True)
     with engine.begin() as conn:
-        conn.execute(text("""
+        conn.execute(
+            text("""
             CREATE TABLE users (
                 id      SERIAL PRIMARY KEY,
                 email   TEXT,
                 country TEXT NOT NULL
             )
-        """))
-        conn.execute(text("""
+        """)
+        )
+        conn.execute(
+            text("""
             INSERT INTO users (email, country) VALUES
                 ('a@x.io', 'RU'),
                 (NULL,     'US'),
                 ('c@x.io', 'RU'),
                 (NULL,     'DE')
-        """))
+        """)
+        )
         # pg_stat_user_tables.n_live_tup is populated by autovacuum; for a
         # fresh table we need an explicit ANALYZE so table_stats returns a
         # non-zero row_count.
@@ -64,6 +68,7 @@ def _seed(pg_container):
 def test_list_tables_returns_seeded_table(pg_url):
     with use_target_db(pg_url):
         from app.db import list_tables
+
         tables = list_tables(schema="public")
     names = [t["table_name"] for t in tables]
     assert "users" in names
@@ -73,6 +78,7 @@ def test_list_tables_returns_seeded_table(pg_url):
 def test_table_stats_reports_row_count_and_size(pg_url):
     with use_target_db(pg_url):
         from app.db import table_stats
+
         stats = table_stats("users", schema="public")
     assert stats is not None
     assert stats["table_name"] == "users"
@@ -83,12 +89,14 @@ def test_table_stats_reports_row_count_and_size(pg_url):
 def test_table_stats_returns_none_for_missing_table(pg_url):
     with use_target_db(pg_url):
         from app.db import table_stats
+
         assert table_stats("does_not_exist", schema="public") is None
 
 
 def test_table_schema_returns_columns_with_nullability(pg_url):
     with use_target_db(pg_url):
         from app.db import table_schema
+
         cols = table_schema("users", schema="public")
     by_name = {c["name"]: c for c in cols}
     assert by_name["id"]["nullable"] is False
@@ -100,6 +108,7 @@ def test_table_schema_returns_columns_with_nullability(pg_url):
 def test_column_nulls_counts_email_nulls(pg_url):
     with use_target_db(pg_url):
         from app.db import column_nulls
+
         cols = column_nulls("users", schema="public")
     by_name = {c["column"]: c for c in cols}
     # 2 of 4 emails are NULL → null_rate 0.5

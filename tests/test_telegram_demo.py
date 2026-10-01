@@ -90,15 +90,15 @@ def test_clickhouse_spec_has_strong_enough_score_for_quality_gate():
 
 
 def test_configure_saves_notifications_for_all_default_projects(
-    storage, monkeypatch,
+    storage,
+    monkeypatch,
 ):
     """End-to-end: configure(DEFAULT_PROJECTS) → у каждого из трёх demo
     проектов есть row в project_notifications с расшифрованным токеном."""
     from app.config import settings as cfg
     from scripts.telegram_demo import DEFAULT_PROJECTS, configure
 
-    monkeypatch.setattr(cfg, "TELEGRAM_BOT_TOKEN",
-                        "0000000001:" + "A" * 35)
+    monkeypatch.setattr(cfg, "TELEGRAM_BOT_TOKEN", "0000000001:" + "A" * 35)
     monkeypatch.setattr(cfg, "TELEGRAM_CHAT_ID", "42")
 
     pids = _seed_demo_projects(storage)
@@ -119,21 +119,20 @@ def test_configure_missing_clickhouse_project_raises(storage, monkeypatch):
     from app.config import settings as cfg
     from scripts.telegram_demo import DEFAULT_PROJECTS, configure
 
-    monkeypatch.setattr(cfg, "TELEGRAM_BOT_TOKEN",
-                        "0000000001:" + "A" * 35)
+    monkeypatch.setattr(cfg, "TELEGRAM_BOT_TOKEN", "0000000001:" + "A" * 35)
     monkeypatch.setattr(cfg, "TELEGRAM_CHAT_ID", "42")
 
     # Создаём только два первых проекта; events-clickhouse — нет.
     uid = uuid.uuid4().hex
-    storage.create_user(user_id=uid, email="demo@dbmonitor.app",
-                        password_hash="x")
-    storage.create_project(project_id=uuid.uuid4().hex, user_id=uid,
-                            name="P1", slug="retail-postgres")
+    storage.create_user(user_id=uid, email="demo@dbmonitor.app", password_hash="x")
+    storage.create_project(
+        project_id=uuid.uuid4().hex, user_id=uid, name="P1", slug="retail-postgres"
+    )
     lake_uid = uuid.uuid4().hex
-    storage.create_user(user_id=lake_uid, email="lake@dbmonitor.app",
-                        password_hash="x")
-    storage.create_project(project_id=uuid.uuid4().hex, user_id=lake_uid,
-                            name="P2", slug="iceberg-lakehouse")
+    storage.create_user(user_id=lake_uid, email="lake@dbmonitor.app", password_hash="x")
+    storage.create_project(
+        project_id=uuid.uuid4().hex, user_id=lake_uid, name="P2", slug="iceberg-lakehouse"
+    )
 
     with pytest.raises(SystemExit) as exc_info:
         configure(DEFAULT_PROJECTS, throttle_minutes=15)

@@ -32,19 +32,24 @@ from app.app import create_app
 def app(tmp_path, monkeypatch):
     db_path = tmp_path / "rename.db"
     monkeypatch.setattr(
-        metrics_storage.settings, "MONITOR_DB_URL", f"sqlite:///{db_path}",
+        metrics_storage.settings,
+        "MONITOR_DB_URL",
+        f"sqlite:///{db_path}",
     )
     monkeypatch.setattr(metrics_storage, "_engine", None)
     monkeypatch.setattr(metrics_storage, "_initialized", False)
 
     import app.db
+
     monkeypatch.setattr(app.db, "list_tables", lambda schema=None: [])
 
-    return create_app({
-        "TESTING": True,
-        "LOGIN_DISABLED": False,
-        "WTF_CSRF_ENABLED": False,
-    })
+    return create_app(
+        {
+            "TESTING": True,
+            "LOGIN_DISABLED": False,
+            "WTF_CSRF_ENABLED": False,
+        }
+    )
 
 
 @pytest.fixture
@@ -56,9 +61,14 @@ def client(app):
 
 
 def _register(client, email, password="secret123"):
-    return client.post("/auth/register", data={
-        "email": email, "password": password, "confirm": password,
-    })
+    return client.post(
+        "/auth/register",
+        data={
+            "email": email,
+            "password": password,
+            "confirm": password,
+        },
+    )
 
 
 def _login(client, email, password="secret123"):
@@ -282,7 +292,9 @@ def test_max_length_name_accepted(app, client, owner_with_project):
     slug, pid = owner_with_project
     name = "x" * 80
     r = client.post(
-        f"/projects/{slug}/rename", data={"name": name}, follow_redirects=False,
+        f"/projects/{slug}/rename",
+        data={"name": name},
+        follow_redirects=False,
     )
     assert r.status_code == 302
     with app.app_context():
@@ -303,12 +315,20 @@ def test_connections_intact_after_rename(app, client, owner_with_project):
     # would be overkill here — we only care that the rows survive).
     with app.app_context():
         metrics_storage.create_connection(
-            connection_id="c1", project_id=pid, name="db1",
-            dsn_encrypted=b"x", schema_name="public", interval_minutes=15,
+            connection_id="c1",
+            project_id=pid,
+            name="db1",
+            dsn_encrypted=b"x",
+            schema_name="public",
+            interval_minutes=15,
         )
         metrics_storage.create_connection(
-            connection_id="c2", project_id=pid, name="db2",
-            dsn_encrypted=b"y", schema_name="public", interval_minutes=15,
+            connection_id="c2",
+            project_id=pid,
+            name="db2",
+            dsn_encrypted=b"y",
+            schema_name="public",
+            interval_minutes=15,
         )
 
     client.post(f"/projects/{slug}/rename", data={"name": "After"})
@@ -321,12 +341,23 @@ def test_connections_intact_after_rename(app, client, owner_with_project):
 def test_metrics_intact_after_rename(app, client, owner_with_project):
     slug, pid = owner_with_project
     with app.app_context():
-        metrics_storage.save_metrics([
-            {"ts": "2026-06-08T00:00:00", "table_name": "t1",
-             "metric_name": "row_count", "value": 100.0},
-            {"ts": "2026-06-08T00:05:00", "table_name": "t1",
-             "metric_name": "row_count", "value": 110.0},
-        ], project_id=pid)
+        metrics_storage.save_metrics(
+            [
+                {
+                    "ts": "2026-06-08T00:00:00",
+                    "table_name": "t1",
+                    "metric_name": "row_count",
+                    "value": 100.0,
+                },
+                {
+                    "ts": "2026-06-08T00:05:00",
+                    "table_name": "t1",
+                    "metric_name": "row_count",
+                    "value": 110.0,
+                },
+            ],
+            project_id=pid,
+        )
 
     client.post(f"/projects/{slug}/rename", data={"name": "After"})
 

@@ -35,14 +35,14 @@ def test_events_history_contains_device_id_null_rate_incident():
     rows = _metric_rows(events, _timestamps(days=14, interval_minutes=60))
 
     device_nulls = [
-        r for r in rows
+        r
+        for r in rows
         if r["table_name"] == "events"
         and r["metric_name"] == "null_count"
         and r.get("tags", {}).get("column") == "device_id"
     ]
     row_counts = [
-        r for r in rows
-        if r["table_name"] == "events" and r["metric_name"] == "row_count"
+        r for r in rows if r["table_name"] == "events" and r["metric_name"] == "row_count"
     ]
 
     assert len(device_nulls) == 14 * 24

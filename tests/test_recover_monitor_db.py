@@ -21,6 +21,7 @@ import pytest
 def recover_module(monkeypatch, tmp_path):
     """Изолируем MONITOR_DB на tmp_path чтобы не трогать репо-файл."""
     import scripts.recover_monitor_db as mod
+
     monkeypatch.setattr(mod, "MONITOR_DB", tmp_path / "monitor.db")
     return mod
 
@@ -81,6 +82,7 @@ def test_container_health_returns_absent_when_docker_missing(monkeypatch):
 
     def boom(*_a, **_kw):
         raise FileNotFoundError("docker not in PATH")
+
     monkeypatch.setattr("subprocess.run", boom)
     assert mod._container_health("anything") == "absent"
 
@@ -93,8 +95,12 @@ def test_container_health_returns_absent_when_container_missing(monkeypatch):
 
     def fake_run(*_a, **_kw):
         return subprocess.CompletedProcess(
-            args=[], returncode=1, stdout="", stderr="",
+            args=[],
+            returncode=1,
+            stdout="",
+            stderr="",
         )
+
     monkeypatch.setattr("subprocess.run", fake_run)
     assert mod._container_health("nope") == "absent"
 
@@ -106,8 +112,12 @@ def test_container_health_returns_status_when_present(monkeypatch):
 
     def fake_run(*_a, **_kw):
         return subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="healthy\n", stderr="",
+            args=[],
+            returncode=0,
+            stdout="healthy\n",
+            stderr="",
         )
+
     monkeypatch.setattr("subprocess.run", fake_run)
     assert mod._container_health("anything") == "healthy"
 
@@ -134,7 +144,8 @@ def test_ensure_timescale_raises_on_timeout(monkeypatch):
 
     health_seq = iter(["starting", "starting", "starting"])
     monkeypatch.setattr(
-        mod, "_container_health",
+        mod,
+        "_container_health",
         lambda name: next(health_seq, "absent"),
     )
     monkeypatch.setattr("subprocess.run", lambda *a, **kw: None)
@@ -153,16 +164,20 @@ def test_verify_returns_true_on_postgresql_backend(monkeypatch):
 
     import scripts.recover_monitor_db as mod
 
-    body = json.dumps({
-        "status": "ok",
-        "checks": {"monitor_db": {"status": "ok", "backend": "postgresql"}},
-    }).encode()
+    body = json.dumps(
+        {
+            "status": "ok",
+            "checks": {"monitor_db": {"status": "ok", "backend": "postgresql"}},
+        }
+    ).encode()
 
     class FakeResp:
         def read(self):
             return body
+
         def __enter__(self):
             return self
+
         def __exit__(self, *a):
             pass
 
@@ -180,15 +195,19 @@ def test_verify_returns_false_on_sqlite_backend(monkeypatch):
 
     import scripts.recover_monitor_db as mod
 
-    body = json.dumps({
-        "checks": {"monitor_db": {"status": "ok", "backend": "sqlite"}},
-    }).encode()
+    body = json.dumps(
+        {
+            "checks": {"monitor_db": {"status": "ok", "backend": "sqlite"}},
+        }
+    ).encode()
 
     class FakeResp:
         def read(self):
             return body
+
         def __enter__(self):
             return self
+
         def __exit__(self, *a):
             pass
 

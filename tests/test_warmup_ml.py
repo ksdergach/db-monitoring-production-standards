@@ -1,4 +1,3 @@
-
 import pytest
 
 import scripts.warmup_ml as warmup
@@ -20,6 +19,7 @@ def stub_models(monkeypatch):
         def _wrapped(*args, **kwargs):
             calls[key] += 1
             return ret
+
         return _wrapped
 
     monkeypatch.setattr(
@@ -47,8 +47,9 @@ def stub_models(monkeypatch):
     )
     monkeypatch.setattr(
         "ml.anomaly_detector.score_table",
-        _track("score_table", [{"ts": "2026-05-10T00:00:00+00:00",
-                                 "score": -0.1, "is_anomaly": 1}]),
+        _track(
+            "score_table", [{"ts": "2026-05-10T00:00:00+00:00", "score": -0.1, "is_anomaly": 1}]
+        ),
     )
     monkeypatch.setattr(
         "app.metrics_storage.save_anomaly_scores",

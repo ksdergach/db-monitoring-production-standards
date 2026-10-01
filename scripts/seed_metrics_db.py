@@ -40,6 +40,7 @@
     python -m scripts.seed_metrics_db --days 14 --interval-minutes 60
     python -m scripts.seed_metrics_db --reset
 """
+
 from __future__ import annotations
 
 import argparse
@@ -94,7 +95,7 @@ ANOMALY_POINTS: tuple[tuple[float, float], ...] = (
 # Имитирует короткий инцидент качества данных: один час null_rate подскочил
 # на 18 п.п. сразу по всем колонкам, потом откатился к норме.
 NULL_SPIKE_PROGRESS = 0.20  # ~ 11 дней назад в 14-дневном окне
-NULL_SPIKE_DELTA = 0.18     # +18 п.п. к каждой колонке на один тик
+NULL_SPIKE_DELTA = 0.18  # +18 п.п. к каждой колонке на один тик
 
 
 @dataclass(frozen=True)
@@ -181,42 +182,51 @@ PROFILES: dict[str, TableProfile] = {
 def _profile_for(table_name: str) -> TableProfile:
     return PROFILES.get(table_name, DEFAULT_PROFILE)
 
+
 # Синтетические события `schema_events` на таблицу — по одному на каждый
 # тип (column_added / column_removed / type_changed / nullable_changed),
 # чтобы дашборд показывал разнообразие. events.ip_address nullable_changed
 # совпадает по времени с регрессией null_rate — один связный сюжет
 # «вот когда сломалось».
 SCHEMA_EVENT_PROFILES: dict[str, list[dict]] = {
-    "users": [{
-        "progress": 0.40,
-        "change_type": "column_added",
-        "column_name": "phone",
-        "details": {"after": {"name": "phone", "type": "varchar", "nullable": True}},
-    }],
-    "events": [{
-        "progress": 0.50,  # совпадает с regression onset null_rate
-        "change_type": "nullable_changed",
-        "column_name": "ip_address",
-        "details": {
-            "before": {"name": "ip_address", "type": "inet", "nullable": False},
-            "after":  {"name": "ip_address", "type": "inet", "nullable": True},
-        },
-    }],
-    "products": [{
-        "progress": 0.30,
-        "change_type": "type_changed",
-        "column_name": "stock",
-        "details": {
-            "before": {"name": "stock", "type": "integer", "nullable": False},
-            "after":  {"name": "stock", "type": "bigint", "nullable": False},
-        },
-    }],
-    "orders": [{
-        "progress": 0.60,
-        "change_type": "column_removed",
-        "column_name": "legacy_status",
-        "details": {"before": {"name": "legacy_status", "type": "varchar", "nullable": True}},
-    }],
+    "users": [
+        {
+            "progress": 0.40,
+            "change_type": "column_added",
+            "column_name": "phone",
+            "details": {"after": {"name": "phone", "type": "varchar", "nullable": True}},
+        }
+    ],
+    "events": [
+        {
+            "progress": 0.50,  # совпадает с regression onset null_rate
+            "change_type": "nullable_changed",
+            "column_name": "ip_address",
+            "details": {
+                "before": {"name": "ip_address", "type": "inet", "nullable": False},
+                "after": {"name": "ip_address", "type": "inet", "nullable": True},
+            },
+        }
+    ],
+    "products": [
+        {
+            "progress": 0.30,
+            "change_type": "type_changed",
+            "column_name": "stock",
+            "details": {
+                "before": {"name": "stock", "type": "integer", "nullable": False},
+                "after": {"name": "stock", "type": "bigint", "nullable": False},
+            },
+        }
+    ],
+    "orders": [
+        {
+            "progress": 0.60,
+            "change_type": "column_removed",
+            "column_name": "legacy_status",
+            "details": {"before": {"name": "legacy_status", "type": "varchar", "nullable": True}},
+        }
+    ],
 }
 
 
@@ -232,8 +242,14 @@ NUMERIC_SIGMA = 15.0
 DRIFT_ONSET_PROGRESS = 0.5
 
 _NUMERIC_TYPE_FRAGMENTS = (
-    "int", "numeric", "decimal", "real", "double", "float",
-    "money", "serial",
+    "int",
+    "numeric",
+    "decimal",
+    "real",
+    "double",
+    "float",
+    "money",
+    "serial",
 )
 
 
@@ -283,7 +299,9 @@ def _seasonality_factor(ts: datetime, amplitude: float = WEEKLY_AMPLITUDE) -> fl
 
 
 def _backfill_offset(
-    progress: float, current: int, fraction: float = BACKFILL_FRACTION,
+    progress: float,
+    current: int,
+    fraction: float = BACKFILL_FRACTION,
 ) -> int:
     """До ступеньки вычитаем константу, после — ничего не делаем.
     Якорит последнюю точку на `current`, делая ступеньку «накоплением».
@@ -341,9 +359,7 @@ def _row_count_at(
     # Ramp заканчивается в (current - total_steps), чтобы вместе со ступеньками
     # дать ≈ current на progress=1.
     ramp_target = max(0, current - total_steps)
-    base = ramp_target * (
-        profile.start_fraction + (1.0 - profile.start_fraction) * progress
-    )
+    base = ramp_target * (profile.start_fraction + (1.0 - profile.start_fraction) * progress)
     base += _step_contribution(progress, profile.growth_steps, scale)
     base += _backfill_offset(progress, current, profile.backfill_fraction)
     base *= _seasonality_factor(ts, profile.weekly_amplitude)
@@ -376,9 +392,7 @@ def _generate_metric_rows(
         return []
     profile = _profile_for(snapshot.table_name)
     regression_progress_start = max(0.0, 1.0 - REGRESSION_DAYS / max(days, 1))
-    avg_row_size = (
-        snapshot.size_bytes / snapshot.row_count if snapshot.row_count else 0.0
-    )
+    avg_row_size = snapshot.size_bytes / snapshot.row_count if snapshot.row_count else 0.0
     spike_idx = round(NULL_SPIKE_PROGRESS * (n - 1)) if n > 1 else None
 
     rows: list[dict] = []
@@ -386,18 +400,30 @@ def _generate_metric_rows(
         progress = i / (n - 1) if n > 1 else 1.0
         anomaly_mult = _anomaly_multiplier(progress, n, profile.anomalies)
         rc = _row_count_at(progress, snapshot.row_count, ts, rng, profile, anomaly_mult)
-        rows.append({
-            "ts": ts, "table_name": snapshot.table_name,
-            "metric_name": "row_count", "value": rc,
-        })
-        rows.append({
-            "ts": ts, "table_name": snapshot.table_name,
-            "metric_name": "size_bytes", "value": int(rc * avg_row_size),
-        })
-        rows.append({
-            "ts": ts, "table_name": snapshot.table_name,
-            "metric_name": "last_modified", "value": ts.timestamp(),
-        })
+        rows.append(
+            {
+                "ts": ts,
+                "table_name": snapshot.table_name,
+                "metric_name": "row_count",
+                "value": rc,
+            }
+        )
+        rows.append(
+            {
+                "ts": ts,
+                "table_name": snapshot.table_name,
+                "metric_name": "size_bytes",
+                "value": int(rc * avg_row_size),
+            }
+        )
+        rows.append(
+            {
+                "ts": ts,
+                "table_name": snapshot.table_name,
+                "metric_name": "last_modified",
+                "value": ts.timestamp(),
+            }
+        )
 
         is_spike_tick = i == spike_idx
         col_rates: list[float] = []
@@ -407,19 +433,27 @@ def _generate_metric_rows(
             if is_spike_tick:
                 rate = min(1.0, rate + NULL_SPIKE_DELTA)
             null_count = round(rc * rate)
-            rows.append({
-                "ts": ts, "table_name": snapshot.table_name,
-                "metric_name": "null_count", "value": null_count,
-                "tags": {"column": col["column"]},
-            })
+            rows.append(
+                {
+                    "ts": ts,
+                    "table_name": snapshot.table_name,
+                    "metric_name": "null_count",
+                    "value": null_count,
+                    "tags": {"column": col["column"]},
+                }
+            )
             col_rates.append(rate)
 
         if col_rates:
             avg = sum(col_rates) / len(col_rates)
-            rows.append({
-                "ts": ts, "table_name": snapshot.table_name,
-                "metric_name": "null_rate", "value": round(avg, 4),
-            })
+            rows.append(
+                {
+                    "ts": ts,
+                    "table_name": snapshot.table_name,
+                    "metric_name": "null_rate",
+                    "value": round(avg, 4),
+                }
+            )
 
     return rows
 
@@ -461,7 +495,7 @@ def _numeric_buckets(progress: float, drift_amount: float) -> list[dict]:
     out: list[dict] = []
     for i in range(NUMERIC_BUCKETS):
         x = float(i) * 10.0
-        w = math.exp(-((x - mean) ** 2) / (2 * NUMERIC_SIGMA ** 2))
+        w = math.exp(-((x - mean) ** 2) / (2 * NUMERIC_SIGMA**2))
         out.append({"value": x, "count": round(w * 1000)})
     return out
 
@@ -489,23 +523,30 @@ def _generate_distribution_rows(
             else:
                 buckets = _categorical_buckets(progress, drift_amount)
             total = sum(b["count"] for b in buckets)
-            rows.append({
-                "ts": ts,
-                "table_name": snapshot.table_name,
-                "metric_name": "column_distribution",
-                "value": float(total),
-                "tags": {
-                    "column": col["column"],
-                    "data_type": data_type,
-                    "buckets": buckets,
-                },
-            })
+            rows.append(
+                {
+                    "ts": ts,
+                    "table_name": snapshot.table_name,
+                    "metric_name": "column_distribution",
+                    "value": float(total),
+                    "tags": {
+                        "column": col["column"],
+                        "data_type": data_type,
+                        "buckets": buckets,
+                    },
+                }
+            )
     return rows
 
 
 _PURGE_TABLES = (
-    "metrics", "anomaly_scores", "changepoints", "drift_reports",
-    "schema_events", "schema_snapshots", "notifications",
+    "metrics",
+    "anomaly_scores",
+    "changepoints",
+    "drift_reports",
+    "schema_events",
+    "schema_snapshots",
+    "notifications",
 )
 
 
@@ -541,20 +582,14 @@ NOTIFICATION_PROFILES: tuple[NotificationProfile, ...] = (
         event_type="schema_drift",
         table_name="users",
         metric_name=None,
-        message=(
-            "📋 [users] Дрейф схемы:\n"
-            "  • column_added — phone (varchar)"
-        ),
+        message=("📋 [users] Дрейф схемы:\n  • column_added — phone (varchar)"),
     ),
     NotificationProfile(
         progress=0.50,
         event_type="schema_drift",
         table_name="events",
         metric_name=None,
-        message=(
-            "📋 [events] Дрейф схемы:\n"
-            "  • nullable_changed — ip_address (inet)"
-        ),
+        message=("📋 [events] Дрейф схемы:\n  • nullable_changed — ip_address (inet)"),
     ),
     NotificationProfile(
         progress=0.55,
@@ -673,13 +708,15 @@ def _generate_schema_events(
     for p in profiles:
         progress = float(p["progress"])
         ts = end - timedelta(days=days * (1.0 - progress))
-        rows.append({
-            "ts": ts,
-            "table_name": snapshot.table_name,
-            "change_type": p["change_type"],
-            "column_name": p["column_name"],
-            "details": p["details"],
-        })
+        rows.append(
+            {
+                "ts": ts,
+                "table_name": snapshot.table_name,
+                "change_type": p["change_type"],
+                "column_name": p["column_name"],
+                "details": p["details"],
+            }
+        )
     return rows
 
 
@@ -691,7 +728,10 @@ def _purge_existing(project_id: str = "legacy") -> int:
     не имеют project_id и будут вынесены в отдельную задачу.
     """
     _SCOPED = {
-        "metrics", "notifications", "anomaly_scores", "changepoints",
+        "metrics",
+        "notifications",
+        "anomaly_scores",
+        "changepoints",
         "drift_reports",
     }
     # Таблицы без project_id — всегда глобальный DELETE.
@@ -710,7 +750,8 @@ def _purge_existing(project_id: str = "legacy") -> int:
                 logger.warning(
                     "--reset с project_id=%s: таблицы %s очищены глобально — "
                     "project_id-скоупинг для них будет в отдельной задаче",
-                    project_id, ", ".join(_GLOBAL),
+                    project_id,
+                    ", ".join(_GLOBAL),
                 )
             for table_name in _GLOBAL:
                 result = conn.execute(text(f"DELETE FROM {table_name}"))
@@ -776,7 +817,8 @@ if __name__ == "__main__":
     parser.add_argument("--days", type=int, default=14)
     parser.add_argument("--interval-minutes", type=int, default=60)
     parser.add_argument(
-        "--reset", action="store_true",
+        "--reset",
+        action="store_true",
         help=(
             "Удалить существующие данные перед сидом. При --project-id != legacy "
             "metrics/notifications чистятся scoped; остальные таблицы — глобально."
@@ -784,10 +826,16 @@ if __name__ == "__main__":
     )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
-        "--project-id", default="legacy",
+        "--project-id",
+        default="legacy",
         help="project_id для записи метрик и уведомлений (default: legacy)",
     )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)
-    main(args.days, args.interval_minutes, reset=args.reset, seed=args.seed,
-         project_id=args.project_id)
+    main(
+        args.days,
+        args.interval_minutes,
+        reset=args.reset,
+        seed=args.seed,
+        project_id=args.project_id,
+    )

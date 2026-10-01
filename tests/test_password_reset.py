@@ -12,6 +12,7 @@ Covers acceptance criteria from the issue:
   (no leak of email existence)
 - Rate limit on /forgot-password binds to (email, IP)
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -42,15 +43,18 @@ def app_(tmp_path, monkeypatch):
     # Stub the monitored-DB introspection so /dashboard renders the empty
     # state instead of trying to connect to a real Postgres after login.
     import app.db
+
     monkeypatch.setattr(app.db, "list_tables", lambda schema=None: [])
 
     email_mod.clear_outbox()
 
-    app = create_app({
-        "TESTING": True,
-        "LOGIN_DISABLED": False,
-        "WTF_CSRF_ENABLED": False,
-    })
+    app = create_app(
+        {
+            "TESTING": True,
+            "LOGIN_DISABLED": False,
+            "WTF_CSRF_ENABLED": False,
+        }
+    )
     return app
 
 
@@ -60,13 +64,19 @@ def client(app_):
 
 
 def _register(client, email="user@example.com", password="supersecret1"):
-    client.post("/auth/register", data={
-        "email": email, "password": password, "confirm": password,
-    })
+    client.post(
+        "/auth/register",
+        data={
+            "email": email,
+            "password": password,
+            "confirm": password,
+        },
+    )
     client.post("/auth/logout")
 
 
 # ── Storage layer ──────────────────────────────────────────────────────────
+
 
 def test_token_hash_is_stored_not_raw(client):
     """Raw token never lands in the DB — only its HMAC-SHA256(SECRET_KEY, …)."""
@@ -75,8 +85,7 @@ def test_token_hash_is_stored_not_raw(client):
     from app.metrics_storage import get_engine
 
     _register(client, "raw@example.com")
-    resp = client.post("/auth/forgot-password",
-                       data={"email": "raw@example.com"})
+    resp = client.post("/auth/forgot-password", data={"email": "raw@example.com"})
     assert resp.status_code == 302  # redirect to /auth/login
 
     # Pull the raw token out of the email we just "sent".
@@ -86,9 +95,7 @@ def test_token_hash_is_stored_not_raw(client):
     raw_token = msg.body.split("/auth/reset-password/", 1)[1].split()[0]
 
     with get_engine().connect() as conn:
-        rows = conn.execute(text(
-            "SELECT token_hash FROM password_reset_tokens"
-        )).fetchall()
+        rows = conn.execute(text("SELECT token_hash FROM password_reset_tokens")).fetchall()
     assert len(rows) == 1
     stored_hash = rows[0][0]
     assert stored_hash != raw_token
@@ -120,16 +127,13 @@ def test_expired_token_rejected(client):
     from app.metrics_storage import get_engine
 
     _register(client, "expired@example.com")
-    client.post("/auth/forgot-password",
-                data={"email": "expired@example.com"})
+    client.post("/auth/forgot-password", data={"email": "expired@example.com"})
     raw_token = _extract_token_from_last_email()
 
     # Backdate the token to 2 hours ago — past the 1h TTL.
     past = (datetime.now(UTC) - timedelta(hours=2)).isoformat(timespec="seconds")
     with get_engine().begin() as conn:
-        conn.execute(text(
-            "UPDATE password_reset_tokens SET expires_at = :ts"
-        ), {"ts": past})
+        conn.execute(text("UPDATE password_reset_tokens SET expires_at = :ts"), {"ts": past})
 
     resp = client.get(f"/auth/reset-password/{raw_token}")
     assert resp.status_code == 400
@@ -147,10 +151,10 @@ def test_invalid_token_returns_same_generic_error(client):
 
 # ── Route behaviour ────────────────────────────────────────────────────────
 
+
 def test_forgot_unknown_email_still_returns_302_no_email_sent(client):
     """No leak of email existence — same redirect, just nothing actually sent."""
-    resp = client.post("/auth/forgot-password",
-                       data={"email": "ghost@example.com"})
+    resp = client.post("/auth/forgot-password", data={"email": "ghost@example.com"})
     assert resp.status_code == 302
     assert "/auth/login" in resp.headers["Location"]
     assert email_mod.outbox == []
@@ -158,8 +162,7 @@ def test_forgot_unknown_email_still_returns_302_no_email_sent(client):
 
 def test_forgot_known_email_sends_message(client):
     _register(client, "real@example.com")
-    resp = client.post("/auth/forgot-password",
-                       data={"email": "real@example.com"})
+    resp = client.post("/auth/forgot-password", data={"email": "real@example.com"})
     assert resp.status_code == 302
     assert len(email_mod.outbox) == 1
     msg = email_mod.outbox[-1]
@@ -186,10 +189,8 @@ def test_send_email_memory_backend_logs_warning(client, caplog):
 def test_forgot_password_same_response_known_unknown(client):
     _register(client, "registered@example.com")
 
-    known = client.post("/auth/forgot-password",
-                        data={"email": "registered@example.com"})
-    unknown = client.post("/auth/forgot-password",
-                          data={"email": "ghost@example.com"})
+    known = client.post("/auth/forgot-password", data={"email": "registered@example.com"})
+    unknown = client.post("/auth/forgot-password", data={"email": "ghost@example.com"})
 
     assert known.status_code == unknown.status_code == 302
     assert known.headers["Location"] == unknown.headers["Location"]
@@ -199,8 +200,7 @@ def test_forgot_password_logs_warning_no_pii(client, caplog):
     _register(client, "warn@example.com")
 
     with caplog.at_level("WARNING"):
-        resp = client.post("/auth/forgot-password",
-                           data={"email": "warn@example.com"})
+        resp = client.post("/auth/forgot-password", data={"email": "warn@example.com"})
 
     assert resp.status_code == 302
     assert "forgot-password: SMTP not configured" in caplog.text
@@ -251,23 +251,35 @@ def test_successful_reset_changes_password(client):
     client.post("/auth/forgot-password", data={"email": "reset@example.com"})
     raw_token = _extract_token_from_last_email()
 
-    resp = client.post(f"/auth/reset-password/{raw_token}", data={
-        "password": "new-password-2", "confirm": "new-password-2",
-    })
+    resp = client.post(
+        f"/auth/reset-password/{raw_token}",
+        data={
+            "password": "new-password-2",
+            "confirm": "new-password-2",
+        },
+    )
     assert resp.status_code == 302
     assert "/auth/login" in resp.headers["Location"]
 
     # Old password no longer logs in.
-    bad = client.post("/auth/login", data={
-        "email": "reset@example.com", "password": "old-password-1",
-    })
+    bad = client.post(
+        "/auth/login",
+        data={
+            "email": "reset@example.com",
+            "password": "old-password-1",
+        },
+    )
     assert bad.status_code == 200  # form re-renders with error
     assert client.get("/dashboard/", follow_redirects=False).status_code == 302
 
     # New one does.
-    ok = client.post("/auth/login", data={
-        "email": "reset@example.com", "password": "new-password-2",
-    })
+    ok = client.post(
+        "/auth/login",
+        data={
+            "email": "reset@example.com",
+            "password": "new-password-2",
+        },
+    )
     assert ok.status_code == 302
     assert client.get("/dashboard/").status_code == 200
 
@@ -285,6 +297,7 @@ def test_successful_reset_invalidates_other_active_tokens(client):
     # Manually mint a second active token by directly writing through storage,
     # bypassing the /forgot route (which would auto-invalidate).
     from app.metrics_storage import create_password_reset_token, get_user_by_email
+
     user = get_user_by_email("multi@example.com")
     parallel_raw = "second-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     create_password_reset_token(
@@ -296,9 +309,13 @@ def test_successful_reset_invalidates_other_active_tokens(client):
     primary_raw = _extract_token_from_last_email()
 
     # Successfully reset via the primary token.
-    resp = client.post(f"/auth/reset-password/{primary_raw}", data={
-        "password": "fresh-password-2", "confirm": "fresh-password-2",
-    })
+    resp = client.post(
+        f"/auth/reset-password/{primary_raw}",
+        data={
+            "password": "fresh-password-2",
+            "confirm": "fresh-password-2",
+        },
+    )
     assert resp.status_code == 302
 
     # The parallel token must no longer work — invalidated as a side effect.
@@ -312,9 +329,13 @@ def test_used_token_rejected_with_generic_error(client):
     client.post("/auth/forgot-password", data={"email": "used@example.com"})
     raw_token = _extract_token_from_last_email()
 
-    client.post(f"/auth/reset-password/{raw_token}", data={
-        "password": "second-pass-2", "confirm": "second-pass-2",
-    })
+    client.post(
+        f"/auth/reset-password/{raw_token}",
+        data={
+            "password": "second-pass-2",
+            "confirm": "second-pass-2",
+        },
+    )
     # Replay attempt.
     resp = client.get(f"/auth/reset-password/{raw_token}")
     assert resp.status_code == 400
@@ -333,9 +354,13 @@ def test_forgot_password_link_on_login_page(client):
 def test_authed_user_redirected_away_from_forgot_password(client):
     """Already logged-in users go to /dashboard instead of seeing the form."""
     _register(client, "in@example.com")
-    client.post("/auth/login", data={
-        "email": "in@example.com", "password": "supersecret1",
-    })
+    client.post(
+        "/auth/login",
+        data={
+            "email": "in@example.com",
+            "password": "supersecret1",
+        },
+    )
     resp = client.get("/auth/forgot-password", follow_redirects=False)
     assert resp.status_code == 302
     assert "/dashboard" in resp.headers["Location"]
@@ -343,16 +368,20 @@ def test_authed_user_redirected_away_from_forgot_password(client):
 
 def test_authed_user_redirected_away_from_reset_password(client):
     _register(client, "in2@example.com")
-    client.post("/auth/login", data={
-        "email": "in2@example.com", "password": "supersecret1",
-    })
-    resp = client.get("/auth/reset-password/anything",
-                      follow_redirects=False)
+    client.post(
+        "/auth/login",
+        data={
+            "email": "in2@example.com",
+            "password": "supersecret1",
+        },
+    )
+    resp = client.get("/auth/reset-password/anything", follow_redirects=False)
     assert resp.status_code == 302
     assert "/dashboard" in resp.headers["Location"]
 
 
 # ── Rate limit (smoke) ─────────────────────────────────────────────────────
+
 
 def test_forgot_password_rate_limit(app_, monkeypatch):
     """1/minute per (email, IP) — the 2nd consecutive POST hits 429."""
@@ -363,13 +392,15 @@ def test_forgot_password_rate_limit(app_, monkeypatch):
     monkeypatch.setattr(cfg, "SMTP_HOST", "")
     monkeypatch.setattr(cfg, "APP_BASE_URL", "http://test.local")
 
-    app2 = create_app({
-        "TESTING": True,
-        "LOGIN_DISABLED": False,
-        "WTF_CSRF_ENABLED": False,
-        "RATELIMIT_ENABLED": True,
-        "RATELIMIT_STORAGE_URI": "memory://",
-    })
+    app2 = create_app(
+        {
+            "TESTING": True,
+            "LOGIN_DISABLED": False,
+            "WTF_CSRF_ENABLED": False,
+            "RATELIMIT_ENABLED": True,
+            "RATELIMIT_STORAGE_URI": "memory://",
+        }
+    )
     c2 = app2.test_client()
     # Same email, same IP (test client) — second POST should 429.
     r1 = c2.post("/auth/forgot-password", data={"email": "rate@example.com"})
@@ -379,6 +410,7 @@ def test_forgot_password_rate_limit(app_, monkeypatch):
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
+
 
 def _extract_token_from_last_email() -> str:
     assert email_mod.outbox, "expected an email in the outbox"

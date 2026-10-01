@@ -60,9 +60,10 @@ class NotificationsForm(FlaskForm):
         validators=[
             Optional(),
             Length(min=44, max=60),  # bot_id(8-12) + ':' + hash(35) = 44-48
-            Regexp(_TELEGRAM_TOKEN_RE,
-                   message="Формат токена: 1234567890:AAFx... (8–12 цифр, ':', "
-                           "35 символов)"),
+            Regexp(
+                _TELEGRAM_TOKEN_RE,
+                message="Формат токена: 1234567890:AAFx... (8–12 цифр, ':', 35 символов)",
+            ),
         ],
         render_kw={
             "type": "password",
@@ -74,9 +75,11 @@ class NotificationsForm(FlaskForm):
         "Chat ID",
         validators=[
             DataRequired(),
-            Regexp(_CHAT_ID_RE,
-                   message="Chat ID — целое число (личный чат) или начинается "
-                           "с '-100' (супергруппа/канал)."),
+            Regexp(
+                _CHAT_ID_RE,
+                message="Chat ID — целое число (личный чат) или начинается "
+                "с '-100' (супергруппа/канал).",
+            ),
         ],
         render_kw={"autocomplete": "off", "placeholder": "123456789"},
     )
@@ -137,8 +140,7 @@ def notifications(slug: str):
     return _render_notifications(project, form, existing)
 
 
-def _render_notifications(project: dict, form: NotificationsForm,
-                          existing: dict | None):
+def _render_notifications(project: dict, form: NotificationsForm, existing: dict | None):
     token_hint = None
     if existing and existing.get("telegram_bot_token"):
         try:
@@ -152,9 +154,7 @@ def _render_notifications(project: dict, form: NotificationsForm,
         form=form,
         token_hint=token_hint,
         configured=bool(
-            existing
-            and existing.get("telegram_bot_token")
-            and existing.get("telegram_chat_id")
+            existing and existing.get("telegram_bot_token") and existing.get("telegram_chat_id")
         ),
     )
 
@@ -192,7 +192,8 @@ def test_notification(slug: str):
     message = f"✅ Тестовое сообщение из DB Monitor для проекта «{project['name']}»."
     ok, error = send_message(
         message,
-        bot_token=raw_token, chat_id=chat_id,
+        bot_token=raw_token,
+        chat_id=chat_id,
     )
     metrics_storage.save_notification(
         project_id=project["id"],

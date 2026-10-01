@@ -11,6 +11,7 @@ Usage:
     # Full demo dataset (~350k rows, ~10 min on Supabase free tier):
     python -m scripts.seed_target_db --users 50000 --products 1000 --orders 100000 --events 200000 --reset
 """
+
 import argparse
 import random
 import uuid
@@ -50,9 +51,7 @@ def _apply_schema(engine) -> None:
 
 def _truncate(engine) -> None:
     with engine.begin() as conn:
-        conn.execute(text(
-            "TRUNCATE events, orders, products, users RESTART IDENTITY CASCADE"
-        ))
+        conn.execute(text("TRUNCATE events, orders, products, users RESTART IDENTITY CASCADE"))
 
 
 def _get_ids(engine, table: str) -> list[str]:
@@ -70,14 +69,16 @@ def _seed_users(engine, fake: Faker, n: int) -> None:
     rows = []
     for _ in range(n):
         created = now - timedelta(days=random.randint(0, 365))
-        rows.append({
-            "email": None if random.random() < 0.05 else fake.email(),  # ~5% NULL defect
-            "age": random.randint(18, 75),
-            "country": random.choice(_COUNTRIES),
-            "signup_source": random.choice(_SIGNUP_SOURCES),
-            "created_at": created,
-            "updated_at": created,
-        })
+        rows.append(
+            {
+                "email": None if random.random() < 0.05 else fake.email(),  # ~5% NULL defect
+                "age": random.randint(18, 75),
+                "country": random.choice(_COUNTRIES),
+                "signup_source": random.choice(_SIGNUP_SOURCES),
+                "created_at": created,
+                "updated_at": created,
+            }
+        )
     with engine.begin() as conn:
         for chunk in _chunks(rows, 500):
             conn.execute(stmt, chunk)
@@ -97,21 +98,22 @@ def _seed_products(engine, fake: Faker, n: int) -> None:
     for _ in range(n):
         price = round(random.uniform(10.0, 2000.0), 2)
         created = now - timedelta(days=random.randint(30, 365))
-        rows.append({
-            "name": fake.catch_phrase(),
-            "category": random.choice(_CATEGORIES),
-            "price": price,
-            "cost_price": round(price * random.uniform(0.3, 0.8), 2),
-            "stock": random.randint(0, 500),
-            "avg_daily_sales": round(random.uniform(0.1, 50.0), 2),
-            "return_rate": round(random.uniform(0.0, 0.12), 4),
-            "price_updated_at": (
-                now - timedelta(days=random.randint(0, 60))
-                if random.random() > 0.3 else None
-            ),
-            "created_at": created,
-            "updated_at": now - timedelta(days=random.randint(0, 30)),
-        })
+        rows.append(
+            {
+                "name": fake.catch_phrase(),
+                "category": random.choice(_CATEGORIES),
+                "price": price,
+                "cost_price": round(price * random.uniform(0.3, 0.8), 2),
+                "stock": random.randint(0, 500),
+                "avg_daily_sales": round(random.uniform(0.1, 50.0), 2),
+                "return_rate": round(random.uniform(0.0, 0.12), 4),
+                "price_updated_at": (
+                    now - timedelta(days=random.randint(0, 60)) if random.random() > 0.3 else None
+                ),
+                "created_at": created,
+                "updated_at": now - timedelta(days=random.randint(0, 30)),
+            }
+        )
     with engine.begin() as conn:
         for chunk in _chunks(rows, 500):
             conn.execute(stmt, chunk)
@@ -129,18 +131,20 @@ def _seed_orders(engine, user_ids: list[str], n: int) -> None:
     """)
     rows = []
     for _ in range(n):
-        rows.append({
-            "user_id": random.choice(user_ids),
-            "amount": round(random.uniform(10.0, 2000.0), 2),
-            "items_count": random.randint(1, 10),
-            "discount": round(random.uniform(0.0, 0.3), 4),
-            "shipping_country": random.choice(_COUNTRIES),
-            "status": random.choice(_STATUSES),
-            "has_prior_events": random.random() > 0.1,
-            "user_orders_last_1h": random.randint(0, 3),
-            "amount_vs_avg_ratio": round(random.uniform(0.3, 3.0), 4),
-            "created_at": now - timedelta(days=random.randint(0, 180)),
-        })
+        rows.append(
+            {
+                "user_id": random.choice(user_ids),
+                "amount": round(random.uniform(10.0, 2000.0), 2),
+                "items_count": random.randint(1, 10),
+                "discount": round(random.uniform(0.0, 0.3), 4),
+                "shipping_country": random.choice(_COUNTRIES),
+                "status": random.choice(_STATUSES),
+                "has_prior_events": random.random() > 0.1,
+                "user_orders_last_1h": random.randint(0, 3),
+                "amount_vs_avg_ratio": round(random.uniform(0.3, 3.0), 4),
+                "created_at": now - timedelta(days=random.randint(0, 180)),
+            }
+        )
     # inject 5 exact duplicates — controlled defect
     for _ in range(5):
         rows.append(random.choice(rows).copy())
@@ -167,21 +171,23 @@ def _seed_events(engine, fake: Faker, user_ids: list[str], n: int) -> None:
         age_days = random.randint(0, 90)
         null_prob = 0.25 if age_days < 7 else 0.02
         prev_event = random.choice(_EVENT_TYPES) if random.random() > 0.2 else None
-        rows.append({
-            "user_id": random.choice(user_ids),
-            "session_id": str(uuid.uuid4()),
-            "event_type": random.choice(_EVENT_TYPES),
-            "prev_event_type": prev_event,
-            "prev_event_gap_s": round(random.uniform(0.01, 300.0), 3) if prev_event else None,
-            "duration_ms": random.randint(10, 5000),
-            "events_in_session": random.randint(1, 20),
-            "ip_address": None if random.random() < null_prob else fake.ipv4(),
-            "ip_events_last_1h": random.randint(0, 50),
-            "server_id": random.choice(_SERVER_IDS),
-            "device_type": random.choice(_DEVICE_TYPES),
-            "is_bot_suspected": random.random() < 0.02,
-            "created_at": now - timedelta(days=age_days, seconds=random.randint(0, 86400)),
-        })
+        rows.append(
+            {
+                "user_id": random.choice(user_ids),
+                "session_id": str(uuid.uuid4()),
+                "event_type": random.choice(_EVENT_TYPES),
+                "prev_event_type": prev_event,
+                "prev_event_gap_s": round(random.uniform(0.01, 300.0), 3) if prev_event else None,
+                "duration_ms": random.randint(10, 5000),
+                "events_in_session": random.randint(1, 20),
+                "ip_address": None if random.random() < null_prob else fake.ipv4(),
+                "ip_events_last_1h": random.randint(0, 50),
+                "server_id": random.choice(_SERVER_IDS),
+                "device_type": random.choice(_DEVICE_TYPES),
+                "is_bot_suspected": random.random() < 0.02,
+                "created_at": now - timedelta(days=age_days, seconds=random.randint(0, 86400)),
+            }
+        )
     with engine.begin() as conn:
         for chunk in _chunks(rows, 500):
             conn.execute(stmt, chunk)
@@ -242,7 +248,8 @@ if __name__ == "__main__":
     parser.add_argument("--orders", type=int, default=10_000)
     parser.add_argument("--events", type=int, default=80_000)
     parser.add_argument(
-        "--reset", action="store_true",
+        "--reset",
+        action="store_true",
         help="Truncate all tables before seeding (destructive — requires explicit flag)",
     )
     args = parser.parse_args()

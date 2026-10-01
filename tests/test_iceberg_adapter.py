@@ -3,6 +3,7 @@
 All tests mock the PyIceberg catalog — no real Iceberg cluster needed.
 Integration tests (MinIO + testcontainers) live in #124.
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -41,23 +42,28 @@ def _make_manifest_entry(null_value_counts: dict, value_counts: dict, record_cou
 # _adapter_key
 # ---------------------------------------------------------------------------
 
+
 def test_adapter_key_rest():
     from app.db import _adapter_key
+
     assert _adapter_key(REST_DSN) == "iceberg+rest"
 
 
 def test_adapter_key_glue():
     from app.db import _adapter_key
+
     assert _adapter_key(GLUE_DSN) == "iceberg+glue"
 
 
 def test_adapter_key_postgres():
     from app.db import _adapter_key
+
     assert _adapter_key("postgresql://user:pass@host/db") == "postgresql"
 
 
 def test_adapter_key_clickhouse():
     from app.db import _adapter_key
+
     assert _adapter_key("clickhouse+native://user:pass@host:9000/db") == "clickhouse"
 
 
@@ -65,9 +71,11 @@ def test_adapter_key_clickhouse():
 # IcebergAdapter construction
 # ---------------------------------------------------------------------------
 
+
 def test_rest_adapter_init():
     with patch("pyiceberg.catalog.rest.RestCatalog") as mock_cls:
         from app.db import IcebergAdapter
+
         adapter = IcebergAdapter(REST_DSN)
         mock_cls.assert_called_once_with(
             "rest", uri="http://localhost:8181", warehouse="s3://bucket/wh"
@@ -79,6 +87,7 @@ def test_rest_adapter_init_remote_defaults_to_https():
     """Remote host → HTTPS by default (#260)."""
     with patch("pyiceberg.catalog.rest.RestCatalog") as mock_cls:
         from app.db import IcebergAdapter
+
         IcebergAdapter("iceberg+rest://catalog.example.com:8181?warehouse=s3://b/w")
         mock_cls.assert_called_once_with(
             "rest", uri="https://catalog.example.com:8181", warehouse="s3://b/w"
@@ -88,6 +97,7 @@ def test_rest_adapter_init_remote_defaults_to_https():
 def test_rest_adapter_init_localhost_defaults_to_http():
     """localhost / 127.0.0.1 / ::1 → HTTP (dev default, #260)."""
     from app.db import IcebergAdapter
+
     for host in ("localhost", "127.0.0.1", "[::1]"):
         with patch("pyiceberg.catalog.rest.RestCatalog") as mock_cls:
             IcebergAdapter(f"iceberg+rest://{host}:8181?warehouse=s3://b/w")
@@ -98,6 +108,7 @@ def test_rest_adapter_init_localhost_defaults_to_http():
 def test_rest_adapter_docker_hostname_defaults_to_http():
     """Docker-сервисы без точки в имени (iceberg-rest, minio) → HTTP (#290)."""
     from app.db import IcebergAdapter
+
     for host in ("iceberg-rest", "minio", "catalog-service"):
         with patch("pyiceberg.catalog.rest.RestCatalog") as mock_cls:
             IcebergAdapter(f"iceberg+rest://{host}:8181?warehouse=s3://b/w")
@@ -109,9 +120,8 @@ def test_rest_adapter_init_ssl_false_overrides():
     """?ssl=false on a remote host forces HTTP; ssl must not reach PyIceberg (#260)."""
     with patch("pyiceberg.catalog.rest.RestCatalog") as mock_cls:
         from app.db import IcebergAdapter
-        IcebergAdapter(
-            "iceberg+rest://catalog.example.com:8181?warehouse=s3://b/w&ssl=false"
-        )
+
+        IcebergAdapter("iceberg+rest://catalog.example.com:8181?warehouse=s3://b/w&ssl=false")
         called_kwargs = mock_cls.call_args[1]
         assert called_kwargs["uri"].startswith("http://")
         assert "ssl" not in called_kwargs
@@ -121,9 +131,8 @@ def test_rest_adapter_init_ssl_true_overrides_localhost():
     """?ssl=true on localhost forces HTTPS; ssl must not reach PyIceberg (#260)."""
     with patch("pyiceberg.catalog.rest.RestCatalog") as mock_cls:
         from app.db import IcebergAdapter
-        IcebergAdapter(
-            "iceberg+rest://localhost:8181?warehouse=s3://b/w&ssl=true"
-        )
+
+        IcebergAdapter("iceberg+rest://localhost:8181?warehouse=s3://b/w&ssl=true")
         called_kwargs = mock_cls.call_args[1]
         assert called_kwargs["uri"].startswith("https://")
         assert "ssl" not in called_kwargs
@@ -132,12 +141,14 @@ def test_rest_adapter_init_ssl_true_overrides_localhost():
 def test_glue_adapter_init():
     with patch("pyiceberg.catalog.glue.GlueCatalog") as mock_cls:
         from app.db import IcebergAdapter
+
         IcebergAdapter(GLUE_DSN)
         mock_cls.assert_called_once_with("glue", warehouse="s3://bucket/wh")
 
 
 def test_unsupported_catalog_type_raises():
     from app.db import IcebergAdapter
+
     with pytest.raises(ValueError, match="Unsupported Iceberg catalog type"):
         IcebergAdapter("iceberg+hive://host:9083")
 
@@ -145,6 +156,7 @@ def test_unsupported_catalog_type_raises():
 # ---------------------------------------------------------------------------
 # list_tables
 # ---------------------------------------------------------------------------
+
 
 def test_list_tables_rest():
     with patch("pyiceberg.catalog.rest.RestCatalog") as mock_cls:
@@ -154,6 +166,7 @@ def test_list_tables_rest():
             ("myns", "users"),
         ]
         from app.db import IcebergAdapter
+
         adapter = IcebergAdapter(REST_DSN)
         result = adapter.list_tables("myns")
 
@@ -170,6 +183,7 @@ def test_list_tables_unknown_namespace_returns_empty():
         mock_catalog = mock_cls.return_value
         mock_catalog.list_tables.side_effect = NoSuchNamespaceError("myns")
         from app.db import IcebergAdapter
+
         adapter = IcebergAdapter(REST_DSN)
         result = adapter.list_tables("myns")
 
@@ -179,6 +193,7 @@ def test_list_tables_unknown_namespace_returns_empty():
 # ---------------------------------------------------------------------------
 # table_schema
 # ---------------------------------------------------------------------------
+
 
 def test_table_schema():
     with patch("pyiceberg.catalog.rest.RestCatalog") as mock_cls:
@@ -190,6 +205,7 @@ def test_table_schema():
             _make_field(2, "email", "string", optional=True),
         ]
         from app.db import IcebergAdapter
+
         adapter = IcebergAdapter(REST_DSN)
         result = adapter.table_schema("users", "myns")
 
@@ -206,6 +222,7 @@ def test_table_schema_unknown_table_returns_empty():
 
         mock_cls.return_value.load_table.side_effect = NoSuchTableError("users")
         from app.db import IcebergAdapter
+
         adapter = IcebergAdapter(REST_DSN)
         result = adapter.table_schema("users", "myns")
 
@@ -215,6 +232,7 @@ def test_table_schema_unknown_table_returns_empty():
 # ---------------------------------------------------------------------------
 # table_stats
 # ---------------------------------------------------------------------------
+
 
 def test_table_stats_from_snapshot_summary():
     with patch("pyiceberg.catalog.rest.RestCatalog") as mock_cls:
@@ -228,6 +246,7 @@ def test_table_stats_from_snapshot_summary():
         mock_table.current_snapshot.return_value = mock_snapshot
 
         from app.db import IcebergAdapter
+
         adapter = IcebergAdapter(REST_DSN)
         result = adapter.table_stats("orders", "myns")
 
@@ -243,6 +262,7 @@ def test_table_stats_no_snapshot_returns_zeros():
         mock_table.current_snapshot.return_value = None
 
         from app.db import IcebergAdapter
+
         adapter = IcebergAdapter(REST_DSN)
         result = adapter.table_stats("orders", "myns")
 
@@ -257,6 +277,7 @@ def test_table_stats_unknown_table_returns_none():
 
         mock_cls.return_value.load_table.side_effect = NoSuchTableError("orders")
         from app.db import IcebergAdapter
+
         adapter = IcebergAdapter(REST_DSN)
         result = adapter.table_stats("orders", "myns")
 
@@ -278,6 +299,7 @@ def test_table_stats_mor_subtracts_delete_records():
         mock_table.current_snapshot.return_value = mock_snapshot
 
         from app.db import IcebergAdapter
+
         adapter = IcebergAdapter(REST_DSN)
         result = adapter.table_stats("events", "myns")
 
@@ -298,6 +320,7 @@ def test_table_stats_mor_row_count_never_negative():
         mock_table.current_snapshot.return_value = mock_snapshot
 
         from app.db import IcebergAdapter
+
         adapter = IcebergAdapter(REST_DSN)
         result = adapter.table_stats("events", "myns")
 
@@ -307,6 +330,7 @@ def test_table_stats_mor_row_count_never_negative():
 # ---------------------------------------------------------------------------
 # column_nulls — manifest metadata path (no full scan)
 # ---------------------------------------------------------------------------
+
 
 def test_column_nulls_from_manifest_metadata():
     """Null counts come from manifest entries, not a data scan."""
@@ -331,6 +355,7 @@ def test_column_nulls_from_manifest_metadata():
         mock_snapshot.manifests.return_value = [mock_manifest]
 
         from app.db import IcebergAdapter
+
         adapter = IcebergAdapter(REST_DSN)
         result = adapter.column_nulls("users", "myns")
 
@@ -362,6 +387,7 @@ def test_column_nulls_skips_deleted_manifest_entries():
         mock_snapshot.manifests.return_value = [mock_manifest]
 
         from app.db import IcebergAdapter
+
         adapter = IcebergAdapter(REST_DSN)
         result = adapter.column_nulls("users", "myns")
 
@@ -372,6 +398,7 @@ def test_column_nulls_no_snapshot_returns_empty():
     with patch("pyiceberg.catalog.rest.RestCatalog") as mock_cls:
         mock_cls.return_value.load_table.return_value.current_snapshot.return_value = None
         from app.db import IcebergAdapter
+
         adapter = IcebergAdapter(REST_DSN)
         assert adapter.column_nulls("users", "myns") == []
 
@@ -380,9 +407,11 @@ def test_column_nulls_no_snapshot_returns_empty():
 # column_distribution — graceful skip
 # ---------------------------------------------------------------------------
 
+
 def test_column_distribution_returns_empty():
     with patch("pyiceberg.catalog.rest.RestCatalog"):
         from app.db import IcebergAdapter
+
         adapter = IcebergAdapter(REST_DSN)
         assert adapter.column_distribution("orders", "myns") == []
 
@@ -391,9 +420,11 @@ def test_column_distribution_returns_empty():
 # quote_ident — no SQL quoting for Iceberg
 # ---------------------------------------------------------------------------
 
+
 def test_quote_ident_passthrough():
     with patch("pyiceberg.catalog.rest.RestCatalog"):
         from app.db import IcebergAdapter
+
         adapter = IcebergAdapter(REST_DSN)
         assert adapter.quote_ident("my_table") == "my_table"
 
@@ -402,9 +433,11 @@ def test_quote_ident_passthrough():
 # make_adapter_for_url integration
 # ---------------------------------------------------------------------------
 
+
 def test_make_adapter_for_url_returns_iceberg_adapter():
     with patch("pyiceberg.catalog.rest.RestCatalog"):
         from app.db import IcebergAdapter, make_adapter_for_url
+
         adapter = make_adapter_for_url(REST_DSN)
         assert isinstance(adapter, IcebergAdapter)
 
@@ -412,6 +445,7 @@ def test_make_adapter_for_url_returns_iceberg_adapter():
 def test_make_adapter_for_url_glue():
     with patch("pyiceberg.catalog.glue.GlueCatalog"):
         from app.db import IcebergAdapter, make_adapter_for_url
+
         adapter = make_adapter_for_url(GLUE_DSN)
         assert isinstance(adapter, IcebergAdapter)
 
@@ -420,10 +454,12 @@ def test_make_adapter_for_url_glue():
 # using_engine with engine=None — Iceberg path
 # ---------------------------------------------------------------------------
 
+
 def test_using_engine_none_does_not_set_engine_override():
     """engine=None must leave _engine_override untouched; adapter override must work."""
     with patch("pyiceberg.catalog.rest.RestCatalog"):
         from app.db import IcebergAdapter, _engine_override, get_adapter, using_engine
+
         adapter = IcebergAdapter(REST_DSN)
 
     original_engine = _engine_override.get()
@@ -434,4 +470,5 @@ def test_using_engine_none_does_not_set_engine_override():
         assert get_adapter() is adapter, "adapter override must be active inside the block"
 
     from app.db import _adapter_override
+
     assert _adapter_override.get() is None, "adapter override must be cleared after the block"

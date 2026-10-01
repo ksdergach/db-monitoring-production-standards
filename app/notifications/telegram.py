@@ -46,7 +46,10 @@ logger = logging.getLogger(__name__)
 
 
 def send_message(
-    text: str, *, bot_token: str | None, chat_id: str | None,
+    text: str,
+    *,
+    bot_token: str | None,
+    chat_id: str | None,
 ) -> tuple[bool, str | None]:
     """Send a plain-text message via Bot API.
 
@@ -157,7 +160,11 @@ def notify_anomaly(
     if is_enabled("llm_notifications"):
         result = explain_anomaly(table, metric, ts, project_id=project_id)
         is_llm = result.get("confidence", 0) > _RULE_BASED_CONFIDENCE
-        body = result.get("explanation", "Требуется ручная проверка данных.") if is_llm else "Требуется ручная проверка данных."
+        body = (
+            result.get("explanation", "Требуется ручная проверка данных.")
+            if is_llm
+            else "Требуется ручная проверка данных."
+        )
     else:
         body = "Требуется ручная проверка данных."
 
@@ -171,9 +178,16 @@ def notify_anomaly(
         f"{body}"
     )
     ok, error = send_message(text, bot_token=bot_token, chat_id=chat_id)
-    _record(project_id=project_id, event_type="anomaly", message=text,
-            ok=ok, error=error, chat_id=chat_id,
-            table=table, metric=metric)
+    _record(
+        project_id=project_id,
+        event_type="anomaly",
+        message=text,
+        ok=ok,
+        error=error,
+        chat_id=chat_id,
+        table=table,
+        metric=metric,
+    )
     if ok:
         update_throttle(project_id, table, event_key)
 
@@ -229,24 +243,26 @@ def notify_schema_drift(
         change_type = e.get("change_type", "")
         column = e.get("column_name", "")
         details = e.get("details", {})
-        col_type = (
-            (details.get("after") or details.get("before") or {}).get("type", "")
-        )
+        col_type = (details.get("after") or details.get("before") or {}).get("type", "")
         line = f"  • {change_type} — {column}"
         if col_type:
             line += f" ({col_type})"
         lines.append(line)
 
     project_label = _project_label(project_id)
-    text = (
-        f"\U0001f4cb Дрейф схемы:\n"
-        f"Проект: {project_label}\n"
-        f"Таблица: {table}\n"
-        + "\n".join(lines)
+    text = f"\U0001f4cb Дрейф схемы:\nПроект: {project_label}\nТаблица: {table}\n" + "\n".join(
+        lines
     )
     ok, error = send_message(text, bot_token=bot_token, chat_id=chat_id)
-    _record(project_id=project_id, event_type="schema_drift", message=text,
-            ok=ok, error=error, chat_id=chat_id, table=table)
+    _record(
+        project_id=project_id,
+        event_type="schema_drift",
+        message=text,
+        ok=ok,
+        error=error,
+        chat_id=chat_id,
+        table=table,
+    )
     if ok:
         update_throttle(project_id, table, event_key)
 
@@ -281,8 +297,15 @@ def notify_changepoint(
         f"{metric}: {change_str} ({ts[:10]})"
     )
     ok, error = send_message(text, bot_token=bot_token, chat_id=chat_id)
-    _record(project_id=project_id, event_type="changepoint", message=text,
-            ok=ok, error=error, chat_id=chat_id,
-            table=table, metric=metric)
+    _record(
+        project_id=project_id,
+        event_type="changepoint",
+        message=text,
+        ok=ok,
+        error=error,
+        chat_id=chat_id,
+        table=table,
+        metric=metric,
+    )
     if ok:
         update_throttle(project_id, table, event_key)

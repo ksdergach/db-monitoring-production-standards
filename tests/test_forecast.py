@@ -10,9 +10,11 @@ from ml import forecast as fc_mod
 def _series(n: int, step_hours: int = 1, slope: float = 10.0, start: float = 100.0):
     base = datetime(2026, 4, 1, tzinfo=UTC)
     return [
-        {"ts": (base + timedelta(hours=i * step_hours)).isoformat(timespec="seconds"),
-         "value": start + slope * i,
-         "tags": None}
+        {
+            "ts": (base + timedelta(hours=i * step_hours)).isoformat(timespec="seconds"),
+            "value": start + slope * i,
+            "tags": None,
+        }
         for i in range(n)
     ]
 
@@ -21,12 +23,15 @@ def _series(n: int, step_hours: int = 1, slope: float = 10.0, start: float = 100
 # ml.forecast core
 # ---------------------------------------------------------------------------
 
+
 def test_forecast_uses_linear_fallback_for_short_history(tmp_path, monkeypatch):
     monkeypatch.setattr(fc_mod, "MODELS_DIR", tmp_path)
     monkeypatch.setattr(fc_mod, "_HAS_PROPHET", False)
     rows = _series(10, step_hours=1, slope=5.0, start=0.0)
-    with patch.object(fc_mod, "get_metrics", return_value=rows), \
-         patch.object(fc_mod, "get_changepoints", return_value=[]):
+    with (
+        patch.object(fc_mod, "get_metrics", return_value=rows),
+        patch.object(fc_mod, "get_changepoints", return_value=[]),
+    ):
         out = fc_mod.forecast("t", "row_count", horizon_days=1)
     assert len(out) == 24
     for p in out:
@@ -38,8 +43,10 @@ def test_forecast_uses_linear_fallback_for_short_history(tmp_path, monkeypatch):
 
 def test_forecast_raises_when_too_few_points(tmp_path, monkeypatch):
     monkeypatch.setattr(fc_mod, "MODELS_DIR", tmp_path)
-    with patch.object(fc_mod, "get_metrics", return_value=_series(1)), \
-         patch.object(fc_mod, "get_changepoints", return_value=[]):
+    with (
+        patch.object(fc_mod, "get_metrics", return_value=_series(1)),
+        patch.object(fc_mod, "get_changepoints", return_value=[]),
+    ):
         with pytest.raises(fc_mod.InsufficientDataError):
             fc_mod.forecast("t", "row_count")
 
@@ -49,9 +56,11 @@ def test_retrain_all_skips_empty_tables(tmp_path, monkeypatch):
     monkeypatch.setattr(fc_mod, "_HAS_PROPHET", False)
     tables = [{"table_name": "a"}, {"table_name": "b"}]
     series_map = {"a": _series(5), "b": _series(1)}
-    with patch.object(fc_mod, "get_metrics", side_effect=lambda t, m, p=None, **_: series_map[t]), \
-         patch.object(fc_mod, "get_changepoints", return_value=[]), \
-         patch("app.db.list_tables", return_value=tables):
+    with (
+        patch.object(fc_mod, "get_metrics", side_effect=lambda t, m, p=None, **_: series_map[t]),
+        patch.object(fc_mod, "get_changepoints", return_value=[]),
+        patch("app.db.list_tables", return_value=tables),
+    ):
         counts = fc_mod.retrain_all()
     assert counts["trained"] == 1
     assert counts["skipped"] == 1
@@ -60,6 +69,7 @@ def test_retrain_all_skips_empty_tables(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 # /api/forecast/<table>
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def client(monkeypatch):
@@ -73,7 +83,9 @@ def client(monkeypatch):
 
 
 def test_forecast_endpoint_returns_points(client):
-    payload = [{"ts": "2026-05-01T00:00:00+00:00", "yhat": 1.0, "yhat_lower": 0.5, "yhat_upper": 1.5}]
+    payload = [
+        {"ts": "2026-05-01T00:00:00+00:00", "yhat": 1.0, "yhat_lower": 0.5, "yhat_upper": 1.5}
+    ]
     with patch("ml.forecast.forecast", return_value=payload):
         resp = client.get("/api/forecast/users?metric=row_count&horizon=7d")
     assert resp.status_code == 200
@@ -101,6 +113,7 @@ def test_forecast_endpoint_insufficient_data(client):
 # Changepoint-aware training and cache invalidation
 # ---------------------------------------------------------------------------
 
+
 def test_train_uses_post_changepoint_window_when_cp_is_old(tmp_path, monkeypatch):
     """If the last changepoint is older than MIN_PROPHET_DAYS, train() should
     load only post-cp data — the new regime has had time to stabilise and the
@@ -110,12 +123,22 @@ def test_train_uses_post_changepoint_window_when_cp_is_old(tmp_path, monkeypatch
 
     now = datetime.now(UTC).replace(microsecond=0)
     cp_dt = now - timedelta(days=10)  # well past MIN_PROPHET_DAYS=7
-    fake_cp = [{"ts": cp_dt.isoformat(), "metric_name": "row_count", "score": 10.0,
-                "value_before": 100.0, "value_after": 200.0}]
+    fake_cp = [
+        {
+            "ts": cp_dt.isoformat(),
+            "metric_name": "row_count",
+            "score": 10.0,
+            "value_before": 100.0,
+            "value_after": 200.0,
+        }
+    ]
 
     post_cp_rows = [
-        {"ts": (cp_dt + timedelta(hours=i + 1)).isoformat(timespec="seconds"),
-         "value": 200.0 + i, "tags": None}
+        {
+            "ts": (cp_dt + timedelta(hours=i + 1)).isoformat(timespec="seconds"),
+            "value": 200.0 + i,
+            "tags": None,
+        }
         for i in range(20)
     ]
 
@@ -125,8 +148,10 @@ def test_train_uses_post_changepoint_window_when_cp_is_old(tmp_path, monkeypatch
         captured_windows.append(window)
         return post_cp_rows
 
-    with patch.object(fc_mod, "get_changepoints", return_value=fake_cp), \
-         patch.object(fc_mod, "get_metrics", side_effect=fake_get_metrics):
+    with (
+        patch.object(fc_mod, "get_changepoints", return_value=fake_cp),
+        patch.object(fc_mod, "get_metrics", side_effect=fake_get_metrics),
+    ):
         fc_mod.train("t", "row_count")
 
     # Single load with a window shorter than the 60-day default.
@@ -146,17 +171,31 @@ def test_train_uses_full_history_when_cp_is_recent(tmp_path, monkeypatch):
 
     now = datetime.now(UTC).replace(microsecond=0)
     cp_dt = now - timedelta(hours=10)  # well below MIN_PROPHET_DAYS=7
-    fake_cp = [{"ts": cp_dt.isoformat(), "metric_name": "row_count", "score": 10.0,
-                "value_before": 3000.0, "value_after": 5000.0}]
+    fake_cp = [
+        {
+            "ts": cp_dt.isoformat(),
+            "metric_name": "row_count",
+            "score": 10.0,
+            "value_before": 3000.0,
+            "value_after": 5000.0,
+        }
+    ]
 
     pre = [
-        {"ts": (cp_dt - timedelta(days=14) + timedelta(hours=i)).isoformat(timespec="seconds"),
-         "value": 1000.0 + 200 * i / 14.0, "tags": None}
+        {
+            "ts": (cp_dt - timedelta(days=14) + timedelta(hours=i)).isoformat(timespec="seconds"),
+            "value": 1000.0 + 200 * i / 14.0,
+            "tags": None,
+        }
         for i in range(14 * 24)
     ]
     post = [
-        {"ts": (cp_dt + timedelta(hours=i + 1)).isoformat(timespec="seconds"),
-         "value": 5000.0, "tags": None} for i in range(10)
+        {
+            "ts": (cp_dt + timedelta(hours=i + 1)).isoformat(timespec="seconds"),
+            "value": 5000.0,
+            "tags": None,
+        }
+        for i in range(10)
     ]
     rows = pre + post
 
@@ -166,8 +205,10 @@ def test_train_uses_full_history_when_cp_is_recent(tmp_path, monkeypatch):
         captured_windows.append(window)
         return rows
 
-    with patch.object(fc_mod, "get_changepoints", return_value=fake_cp), \
-         patch.object(fc_mod, "get_metrics", side_effect=fake_get_metrics):
+    with (
+        patch.object(fc_mod, "get_changepoints", return_value=fake_cp),
+        patch.object(fc_mod, "get_metrics", side_effect=fake_get_metrics),
+    ):
         fc_mod.train("t", "row_count")
 
     # Single load, default 60-day window — full history, no post-cp filter.
@@ -185,28 +226,42 @@ def test_forecast_invalidates_cache_on_new_changepoint(tmp_path, monkeypatch):
     # Persist a model that was trained with no changepoint
     old_model = fc_mod._fit_linear([(fc_mod._parse_ts(r["ts"]), float(r["value"])) for r in rows])
     import joblib as _jl
-    _jl.dump({
-        "kind": "linear",
-        "model": old_model,
-        "last_ts": rows[-1]["ts"],
-        "last_changepoint_ts": None,
-        "trained_at": "2026-04-01T00:00:00",
-    }, fc_mod._model_path("t", "row_count"))
+
+    _jl.dump(
+        {
+            "kind": "linear",
+            "model": old_model,
+            "last_ts": rows[-1]["ts"],
+            "last_changepoint_ts": None,
+            "trained_at": "2026-04-01T00:00:00",
+        },
+        fc_mod._model_path("t", "row_count"),
+    )
 
     # Now a changepoint has appeared
-    new_cp = [{"ts": rows[5]["ts"], "metric_name": "row_count", "score": 5.0,
-               "value_before": 100.0, "value_after": 150.0}]
+    new_cp = [
+        {
+            "ts": rows[5]["ts"],
+            "metric_name": "row_count",
+            "score": 5.0,
+            "value_before": 100.0,
+            "value_after": 150.0,
+        }
+    ]
 
     train_calls = []
 
     original_train = fc_mod.train
+
     def spy_train(table, metric="row_count", project_id="legacy"):
         train_calls.append((table, metric))
         return original_train(table, metric, project_id)
 
-    with patch.object(fc_mod, "get_metrics", return_value=rows), \
-         patch.object(fc_mod, "get_changepoints", return_value=new_cp), \
-         patch.object(fc_mod, "train", side_effect=spy_train):
+    with (
+        patch.object(fc_mod, "get_metrics", return_value=rows),
+        patch.object(fc_mod, "get_changepoints", return_value=new_cp),
+        patch.object(fc_mod, "train", side_effect=spy_train),
+    ):
         fc_mod.forecast("t", "row_count", horizon_days=1)
 
     assert len(train_calls) == 1, "forecast() must retrain when changepoint is new"
@@ -231,6 +286,7 @@ def test_model_path_isolated_per_project(tmp_path, monkeypatch):
 # Severe-drop strategy and guardrail normalization
 # ---------------------------------------------------------------------------
 
+
 def test_severe_drop_uses_post_cp_points(tmp_path, monkeypatch):
     """Recent severe drop: train() must fit only on post-CP data, not full window."""
     monkeypatch.setattr(fc_mod, "MODELS_DIR", tmp_path)
@@ -238,34 +294,52 @@ def test_severe_drop_uses_post_cp_points(tmp_path, monkeypatch):
 
     now = datetime.now(UTC).replace(microsecond=0)
     cp_dt = now - timedelta(hours=10)
-    fake_cp = [{"ts": cp_dt.isoformat(), "metric_name": "row_count", "score": 15.0,
-                "value_before": 96000.0, "value_after": 4.0}]
+    fake_cp = [
+        {
+            "ts": cp_dt.isoformat(),
+            "metric_name": "row_count",
+            "score": 15.0,
+            "value_before": 96000.0,
+            "value_after": 4.0,
+        }
+    ]
 
     pre_rows = [
-        {"ts": (cp_dt - timedelta(hours=i + 1)).isoformat(timespec="seconds"),
-         "value": 96000.0, "tags": None}
+        {
+            "ts": (cp_dt - timedelta(hours=i + 1)).isoformat(timespec="seconds"),
+            "value": 96000.0,
+            "tags": None,
+        }
         for i in range(20, 0, -1)
     ]
     post_rows = [
-        {"ts": (cp_dt + timedelta(hours=i + 1)).isoformat(timespec="seconds"),
-         "value": 4.0, "tags": None}
+        {
+            "ts": (cp_dt + timedelta(hours=i + 1)).isoformat(timespec="seconds"),
+            "value": 4.0,
+            "tags": None,
+        }
         for i in range(5)
     ]
     all_rows = pre_rows + post_rows
 
     captured_points: list = []
     original_fit = fc_mod._fit_linear
+
     def spy_fit(points):
         captured_points.extend(points)
         return original_fit(points)
 
-    with patch.object(fc_mod, "get_changepoints", return_value=fake_cp), \
-         patch.object(fc_mod, "get_metrics", return_value=all_rows), \
-         patch.object(fc_mod, "_fit_linear", side_effect=spy_fit):
+    with (
+        patch.object(fc_mod, "get_changepoints", return_value=fake_cp),
+        patch.object(fc_mod, "get_metrics", return_value=all_rows),
+        patch.object(fc_mod, "_fit_linear", side_effect=spy_fit),
+    ):
         fc_mod.train("t", "row_count")
 
     assert len(captured_points) == 5, "severe drop: должны использоваться только 5 post-CP точек"
-    assert all(v == 4.0 for _, v in captured_points), "severe drop: все точки обучения из нового режима"
+    assert all(v == 4.0 for _, v in captured_points), (
+        "severe drop: все точки обучения из нового режима"
+    )
 
 
 def test_severe_drop_flat_when_no_post_cp(tmp_path, monkeypatch):
@@ -279,25 +353,38 @@ def test_severe_drop_flat_when_no_post_cp(tmp_path, monkeypatch):
 
     now = datetime.now(UTC).replace(microsecond=0)
     cp_dt = now - timedelta(hours=2)
-    fake_cp = [{"ts": cp_dt.isoformat(), "metric_name": "row_count", "score": 15.0,
-                "value_before": 96000.0, "value_after": 4.0}]
+    fake_cp = [
+        {
+            "ts": cp_dt.isoformat(),
+            "metric_name": "row_count",
+            "score": 15.0,
+            "value_before": 96000.0,
+            "value_after": 4.0,
+        }
+    ]
 
     # Только pre-CP точки — ни одной записи после changepoint (0 post-CP)
     pre_rows = [
-        {"ts": (cp_dt - timedelta(hours=i + 1)).isoformat(timespec="seconds"),
-         "value": 96000.0, "tags": None}
+        {
+            "ts": (cp_dt - timedelta(hours=i + 1)).isoformat(timespec="seconds"),
+            "value": 96000.0,
+            "tags": None,
+        }
         for i in range(20, 0, -1)
     ]
 
-    with patch.object(fc_mod, "get_changepoints", return_value=fake_cp), \
-         patch.object(fc_mod, "get_metrics", return_value=pre_rows):
+    with (
+        patch.object(fc_mod, "get_changepoints", return_value=fake_cp),
+        patch.object(fc_mod, "get_metrics", return_value=pre_rows),
+    ):
         result = fc_mod.forecast("t", "row_count", horizon_days=1)
 
     assert all(p["yhat"] >= 0 for p in result), "yhat не должен уходить в минус"
     assert all(p["yhat_lower"] >= 0 for p in result), "yhat_lower не должен уходить в минус"
     assert all(p["yhat_upper"] >= 0 for p in result), "yhat_upper не должен уходить в минус"
-    assert all(abs(p["yhat"] - 4.0) < 1.0 for p in result), \
+    assert all(abs(p["yhat"] - 4.0) < 1.0 for p in result), (
         "прогноз должен держаться около value_after=4, не уходить к pre-CP значению 96000"
+    )
 
 
 def test_non_severe_recent_drop_uses_full_window(tmp_path, monkeypatch):
@@ -308,8 +395,15 @@ def test_non_severe_recent_drop_uses_full_window(tmp_path, monkeypatch):
     now = datetime.now(UTC).replace(microsecond=0)
     cp_dt = now - timedelta(hours=10)
     # ratio = 80/100 = 0.8 — выше порога 0.2, не severe
-    fake_cp = [{"ts": cp_dt.isoformat(), "metric_name": "row_count", "score": 5.0,
-                "value_before": 100.0, "value_after": 80.0}]
+    fake_cp = [
+        {
+            "ts": cp_dt.isoformat(),
+            "metric_name": "row_count",
+            "score": 5.0,
+            "value_before": 100.0,
+            "value_after": 80.0,
+        }
+    ]
 
     rows = _series(50, step_hours=1, slope=1.0, start=50.0)
     captured_windows = []
@@ -318,21 +412,27 @@ def test_non_severe_recent_drop_uses_full_window(tmp_path, monkeypatch):
         captured_windows.append(window)
         return rows
 
-    with patch.object(fc_mod, "get_changepoints", return_value=fake_cp), \
-         patch.object(fc_mod, "get_metrics", side_effect=fake_get_metrics):
+    with (
+        patch.object(fc_mod, "get_changepoints", return_value=fake_cp),
+        patch.object(fc_mod, "get_metrics", side_effect=fake_get_metrics),
+    ):
         fc_mod.train("t", "row_count")
 
     assert len(captured_windows) == 1
-    assert captured_windows[0] == timedelta(days=60), "умеренный drop: должно использоваться полное 60-дневное окно"
+    assert captured_windows[0] == timedelta(days=60), (
+        "умеренный drop: должно использоваться полное 60-дневное окно"
+    )
 
 
 def test_anchor_shift_no_negative_values():
     """Все yhat* >= 0 после большого отрицательного сдвига."""
     out = [
-        {"ts": f"2026-01-01T{h:02d}:00:00+00:00",
-         "yhat": 100.0 - 20.0 * h,
-         "yhat_lower": 95.0 - 20.0 * h,
-         "yhat_upper": 105.0 - 20.0 * h}
+        {
+            "ts": f"2026-01-01T{h:02d}:00:00+00:00",
+            "yhat": 100.0 - 20.0 * h,
+            "yhat_lower": 95.0 - 20.0 * h,
+            "yhat_upper": 105.0 - 20.0 * h,
+        }
         for h in range(10)
     ]
     result = fc_mod._anchor_shift(out, last_value=4.0)
@@ -345,8 +445,9 @@ def test_anchor_shift_no_negative_values():
 
 def test_anchor_shift_normalizes_when_no_shift():
     """Нормализация должна работать даже когда last_value=None (shift не применяется)."""
-    out = [{"ts": "2026-01-01T00:00:00+00:00",
-            "yhat": -5.0, "yhat_lower": -10.0, "yhat_upper": -1.0}]
+    out = [
+        {"ts": "2026-01-01T00:00:00+00:00", "yhat": -5.0, "yhat_lower": -10.0, "yhat_upper": -1.0}
+    ]
     result = fc_mod._anchor_shift(out, last_value=None)
     assert result[0]["yhat"] == 0.0
     assert result[0]["yhat_lower"] == 0.0
@@ -359,8 +460,10 @@ def test_train_writes_to_project_scoped_path(tmp_path, monkeypatch):
     monkeypatch.setattr(fc_mod, "_HAS_PROPHET", False)
     rows = _series(10, step_hours=1, slope=5.0, start=100.0)
 
-    with patch.object(fc_mod, "get_metrics", return_value=rows), \
-         patch.object(fc_mod, "get_changepoints", return_value=[]):
+    with (
+        patch.object(fc_mod, "get_metrics", return_value=rows),
+        patch.object(fc_mod, "get_changepoints", return_value=[]),
+    ):
         fc_mod.train("orders", "row_count", project_id="tenant-x")
 
     expected = fc_mod._model_path("orders", "row_count", project_id="tenant-x")

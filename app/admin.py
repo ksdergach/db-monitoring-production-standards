@@ -27,6 +27,7 @@ def admin_required(view):
     написанные с LOGIN_DISABLED=True, упали бы 403. Тесты, явно
     проверяющие #220 acceptance, поднимают LOGIN_DISABLED=False.
     """
+
     @wraps(view)
     def wrapper(*args, **kwargs):
         from flask import current_app
@@ -36,6 +37,7 @@ def admin_required(view):
         if not getattr(current_user, "is_admin", False):
             abort(403)
         return view(*args, **kwargs)
+
     return wrapper
 
 
@@ -59,15 +61,17 @@ def list_jobs():
     if current_user.is_authenticated:
         return jsonify(list_jobs_for_user(scheduler, current_user.id))
 
-    return jsonify([
-        {
-            "id": job.id,
-            "name": job.name,
-            "next_run_time": job.next_run_time.isoformat() if job.next_run_time else None,
-            "trigger": str(job.trigger),
-        }
-        for job in scheduler.get_jobs()
-    ])
+    return jsonify(
+        [
+            {
+                "id": job.id,
+                "name": job.name,
+                "next_run_time": job.next_run_time.isoformat() if job.next_run_time else None,
+                "trigger": str(job.trigger),
+            }
+            for job in scheduler.get_jobs()
+        ]
+    )
 
 
 @bp.route("/jobs/<job_id>/run", methods=["POST"])
@@ -96,11 +100,13 @@ def run_job(job_id: str):
         return jsonify({"error": f"job '{job_id}' not found"}), 404
 
     job.modify(next_run_time=datetime.now(UTC))
-    return jsonify({
-        "status": "triggered",
-        "job_id": job_id,
-        "next_run_time": job.next_run_time.isoformat() if job.next_run_time else None,
-    })
+    return jsonify(
+        {
+            "status": "triggered",
+            "job_id": job_id,
+            "next_run_time": job.next_run_time.isoformat() if job.next_run_time else None,
+        }
+    )
 
 
 @bp.route("/rollback-checklist")

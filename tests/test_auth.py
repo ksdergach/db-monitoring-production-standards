@@ -31,17 +31,20 @@ def auth_app(tmp_path, monkeypatch):
     # Stub the monitored-DB introspection so /dashboard renders the empty
     # state instead of trying to connect to a real Postgres.
     import app.db
+
     monkeypatch.setattr(app.db, "list_tables", lambda schema=None: [])
 
-    app = create_app({
-        "TESTING": True,
-        # Override the TESTING auto-disable so we can actually exercise auth.
-        "LOGIN_DISABLED": False,
-        # Keep CSRF off — Flask-WTF tokens require a real browser session
-        # round-trip that the test client doesn't model. The forms still
-        # validate field constraints; we're testing the auth flow, not CSRF.
-        "WTF_CSRF_ENABLED": False,
-    })
+    app = create_app(
+        {
+            "TESTING": True,
+            # Override the TESTING auto-disable so we can actually exercise auth.
+            "LOGIN_DISABLED": False,
+            # Keep CSRF off — Flask-WTF tokens require a real browser session
+            # round-trip that the test client doesn't model. The forms still
+            # validate field constraints; we're testing the auth flow, not CSRF.
+            "WTF_CSRF_ENABLED": False,
+        }
+    )
     return app
 
 
@@ -73,12 +76,16 @@ def test_register_creates_user_logs_in_and_redirects(client):
 
 
 def test_register_normalises_email_to_lowercase(client):
-    client.post("/auth/register", data={
-        "email": "BoB@Example.COM",
-        "password": "supersecret1",
-        "confirm": "supersecret1",
-    })
+    client.post(
+        "/auth/register",
+        data={
+            "email": "BoB@Example.COM",
+            "password": "supersecret1",
+            "confirm": "supersecret1",
+        },
+    )
     from app.metrics_storage import get_user_by_email
+
     assert get_user_by_email("bob@example.com") is not None
     assert get_user_by_email("BoB@Example.COM") is None  # case-sensitive lookup
 
@@ -99,25 +106,33 @@ def test_register_duplicate_email_returns_409(client):
 
 
 def test_register_rejects_password_mismatch(client):
-    resp = client.post("/auth/register", data={
-        "email": "ann@example.com",
-        "password": "supersecret1",
-        "confirm": "differentpass1",
-    })
+    resp = client.post(
+        "/auth/register",
+        data={
+            "email": "ann@example.com",
+            "password": "supersecret1",
+            "confirm": "differentpass1",
+        },
+    )
     # Form re-renders with 200; we just check the user wasn't created.
     assert resp.status_code == 200
     from app.metrics_storage import get_user_by_email
+
     assert get_user_by_email("ann@example.com") is None
 
 
 def test_register_rejects_short_password(client):
-    resp = client.post("/auth/register", data={
-        "email": "short@example.com",
-        "password": "1234567",
-        "confirm": "1234567",
-    })
+    resp = client.post(
+        "/auth/register",
+        data={
+            "email": "short@example.com",
+            "password": "1234567",
+            "confirm": "1234567",
+        },
+    )
     assert resp.status_code == 200
     from app.metrics_storage import get_user_by_email
+
     assert get_user_by_email("short@example.com") is None
 
 
@@ -125,17 +140,26 @@ def test_register_rejects_short_password(client):
 
 
 def _register(client, email="test@example.com", password="supersecret1"):
-    client.post("/auth/register", data={
-        "email": email, "password": password, "confirm": password,
-    })
+    client.post(
+        "/auth/register",
+        data={
+            "email": email,
+            "password": password,
+            "confirm": password,
+        },
+    )
     client.post("/auth/logout")
 
 
 def test_login_with_correct_password_redirects_to_dashboard(client):
     _register(client, "ok@example.com", "supersecret1")
-    resp = client.post("/auth/login", data={
-        "email": "ok@example.com", "password": "supersecret1",
-    })
+    resp = client.post(
+        "/auth/login",
+        data={
+            "email": "ok@example.com",
+            "password": "supersecret1",
+        },
+    )
     assert resp.status_code == 302
     assert resp.headers["Location"].endswith("/dashboard/")
 
@@ -143,20 +167,29 @@ def test_login_with_correct_password_redirects_to_dashboard(client):
 def test_login_updates_last_login_at(client):
     _register(client, "stamp@example.com", "supersecret1")
     from app.metrics_storage import get_user_by_email
+
     before = get_user_by_email("stamp@example.com")
     assert before["last_login_at"] is None
-    client.post("/auth/login", data={
-        "email": "stamp@example.com", "password": "supersecret1",
-    })
+    client.post(
+        "/auth/login",
+        data={
+            "email": "stamp@example.com",
+            "password": "supersecret1",
+        },
+    )
     after = get_user_by_email("stamp@example.com")
     assert after["last_login_at"] is not None
 
 
 def test_login_with_wrong_password_renders_form(client):
     _register(client, "user@example.com", "supersecret1")
-    resp = client.post("/auth/login", data={
-        "email": "user@example.com", "password": "wrong-pass",
-    })
+    resp = client.post(
+        "/auth/login",
+        data={
+            "email": "user@example.com",
+            "password": "wrong-pass",
+        },
+    )
     assert resp.status_code == 200  # form re-renders, no redirect
     # Dashboard should still be unreachable
     dash = client.get("/dashboard/", follow_redirects=False)
@@ -164,9 +197,13 @@ def test_login_with_wrong_password_renders_form(client):
 
 
 def test_login_with_unknown_email_renders_form(client):
-    resp = client.post("/auth/login", data={
-        "email": "ghost@example.com", "password": "supersecret1",
-    })
+    resp = client.post(
+        "/auth/login",
+        data={
+            "email": "ghost@example.com",
+            "password": "supersecret1",
+        },
+    )
     assert resp.status_code == 200
 
 
@@ -192,13 +229,16 @@ def test_login_rejects_open_redirect_in_next_param(client):
     assert resp.headers["Location"].endswith("/dashboard/")
 
 
-@pytest.mark.parametrize("evil_next", [
-    "//evil.example.com/",           # protocol-relative
-    "https://evil.example.com/",     # absolute
-    "/\\evil.example.com/",          # backslash → browsers may renormalise to //
-    "/auth/logout",                  # logout loop right after login
-    "/auth/login",                   # self-redirect loop
-])
+@pytest.mark.parametrize(
+    "evil_next",
+    [
+        "//evil.example.com/",  # protocol-relative
+        "https://evil.example.com/",  # absolute
+        "/\\evil.example.com/",  # backslash → browsers may renormalise to //
+        "/auth/logout",  # logout loop right after login
+        "/auth/login",  # self-redirect loop
+    ],
+)
 def test_login_rejects_unsafe_next_variants(client, evil_next):
     _register(client, "bypass@example.com", "supersecret1")
     resp = client.post(
@@ -219,9 +259,13 @@ def test_login_rejects_unsafe_next_variants(client, evil_next):
 
 def test_logout_clears_session(client):
     _register(client, "out@example.com", "supersecret1")
-    client.post("/auth/login", data={
-        "email": "out@example.com", "password": "supersecret1",
-    })
+    client.post(
+        "/auth/login",
+        data={
+            "email": "out@example.com",
+            "password": "supersecret1",
+        },
+    )
     # Confirm logged in.
     assert client.get("/dashboard/").status_code == 200
 
@@ -261,9 +305,13 @@ def test_admin_anonymous_redirects_to_login(client):
 
 def test_authenticated_user_already_logged_in_redirects_away_from_login(client):
     _register(client, "in@example.com", "supersecret1")
-    client.post("/auth/login", data={
-        "email": "in@example.com", "password": "supersecret1",
-    })
+    client.post(
+        "/auth/login",
+        data={
+            "email": "in@example.com",
+            "password": "supersecret1",
+        },
+    )
     resp = client.get("/auth/login", follow_redirects=False)
     assert resp.status_code == 302
     assert resp.headers["Location"].endswith("/dashboard/")
@@ -271,9 +319,13 @@ def test_authenticated_user_already_logged_in_redirects_away_from_login(client):
 
 def test_register_when_already_logged_in_redirects_away(client):
     _register(client, "already@example.com", "supersecret1")
-    client.post("/auth/login", data={
-        "email": "already@example.com", "password": "supersecret1",
-    })
+    client.post(
+        "/auth/login",
+        data={
+            "email": "already@example.com",
+            "password": "supersecret1",
+        },
+    )
     resp = client.get("/auth/register", follow_redirects=False)
     assert resp.status_code == 302
 

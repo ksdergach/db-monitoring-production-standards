@@ -57,16 +57,10 @@ def test_schema_tables_indexes_and_checks_exist(storage):
     engine = storage.get_engine()
     with engine.connect() as conn:
         tables = {
-            r[0]
-            for r in conn.execute(text(
-                "SELECT name FROM sqlite_master WHERE type = 'table'"
-            ))
+            r[0] for r in conn.execute(text("SELECT name FROM sqlite_master WHERE type = 'table'"))
         }
         indexes = {
-            r[0]
-            for r in conn.execute(text(
-                "SELECT name FROM sqlite_master WHERE type = 'index'"
-            ))
+            r[0] for r in conn.execute(text("SELECT name FROM sqlite_master WHERE type = 'index'"))
         }
 
     assert "collector_runs" in tables
@@ -134,19 +128,25 @@ def test_update_connection_probe_scrubs_and_scopes(storage):
     project_a, conn_a = _seed_connection(storage, project_id="proj-a")
     project_b, _ = _seed_connection(storage, project_id="proj-b")
 
-    assert storage.update_connection_probe(
-        project_b["id"],
-        conn_a["id"],
-        status="ok",
-        tables_found=3,
-    ) is False
+    assert (
+        storage.update_connection_probe(
+            project_b["id"],
+            conn_a["id"],
+            status="ok",
+            tables_found=3,
+        )
+        is False
+    )
 
-    assert storage.update_connection_probe(
-        project_a["id"],
-        conn_a["id"],
-        status="error",
-        error="failed postgresql://user:secret@db/app?token=abc",
-    ) is True
+    assert (
+        storage.update_connection_probe(
+            project_a["id"],
+            conn_a["id"],
+            status="error",
+            error="failed postgresql://user:secret@db/app?token=abc",
+        )
+        is True
+    )
 
     conn = storage.get_connection(project_a["id"], conn_a["id"])
     assert conn["last_probe_status"] == "error"
@@ -322,22 +322,34 @@ def test_collect_for_connection_success_creates_run_log(storage):
     from collectors import metrics_collector, per_project
 
     project, conn_row = _seed_connection(storage)
-    fake_rows = [{
-        "ts": datetime.now(UTC),
-        "table_name": "users",
-        "metric_name": "row_count",
-        "value": 42,
-    }]
+    fake_rows = [
+        {
+            "ts": datetime.now(UTC),
+            "table_name": "users",
+            "metric_name": "row_count",
+            "value": 42,
+        }
+    ]
 
     def fake_list_tables(self, schema):
         return [{"table_name": "users", "schema": schema}]
 
-    with mock.patch.object(
-        metrics_collector.MetricsCollector, "collect", return_value=fake_rows,
-    ), mock.patch.object(
-        db_mod.PostgresAdapter, "list_tables", autospec=True, side_effect=fake_list_tables,
-    ), mock.patch(
-        "collectors.schema_collector.collect_table_schema", return_value=None,
+    with (
+        mock.patch.object(
+            metrics_collector.MetricsCollector,
+            "collect",
+            return_value=fake_rows,
+        ),
+        mock.patch.object(
+            db_mod.PostgresAdapter,
+            "list_tables",
+            autospec=True,
+            side_effect=fake_list_tables,
+        ),
+        mock.patch(
+            "collectors.schema_collector.collect_table_schema",
+            return_value=None,
+        ),
     ):
         per_project.collect_for_connection(project["id"], conn_row["id"])
 
@@ -370,12 +382,18 @@ def test_collect_for_connection_table_failure_sets_warning_and_scrubs(storage):
     def fake_list_tables(self, schema):
         return [{"table_name": "users", "schema": schema}]
 
-    with mock.patch.object(
-        metrics_collector.MetricsCollector,
-        "collect",
-        side_effect=RuntimeError("boom postgresql://u:secret@db/app?token=abc"),
-    ), mock.patch.object(
-        db_mod.PostgresAdapter, "list_tables", autospec=True, side_effect=fake_list_tables,
+    with (
+        mock.patch.object(
+            metrics_collector.MetricsCollector,
+            "collect",
+            side_effect=RuntimeError("boom postgresql://u:secret@db/app?token=abc"),
+        ),
+        mock.patch.object(
+            db_mod.PostgresAdapter,
+            "list_tables",
+            autospec=True,
+            side_effect=fake_list_tables,
+        ),
     ):
         per_project.collect_for_connection(project["id"], conn_row["id"])
 

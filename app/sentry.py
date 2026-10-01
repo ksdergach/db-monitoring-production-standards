@@ -106,9 +106,7 @@ def init_sentry() -> bool:
         import sentry_sdk
         from sentry_sdk.integrations.flask import FlaskIntegration
     except ImportError:  # pragma: no cover - dependency missing in slim builds
-        logger.warning(
-            "SENTRY_DSN set but sentry-sdk not installed; skipping init"
-        )
+        logger.warning("SENTRY_DSN set but sentry-sdk not installed; skipping init")
         return False
 
     sentry_sdk.init(
@@ -128,8 +126,9 @@ def init_sentry() -> bool:
         max_request_body_size="never",
         max_breadcrumbs=50,
     )
-    logger.info("Sentry initialised (environment=%s)",
-                settings.SENTRY_ENVIRONMENT or settings.FLASK_ENV)
+    logger.info(
+        "Sentry initialised (environment=%s)", settings.SENTRY_ENVIRONMENT or settings.FLASK_ENV
+    )
     return True
 
 

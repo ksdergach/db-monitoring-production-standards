@@ -12,6 +12,7 @@ Three regimes for null_rate collection:
 ClickHouse / Iceberg connections with sample/approx → warning + fallback
 to ``full`` (no exception, no missing metrics).
 """
+
 from __future__ import annotations
 
 import logging
@@ -138,9 +139,7 @@ def test_sample_mode_zero_rows_drops_null_rate(fake_adapter, caplog):
 
     metric_names = [r["metric_name"] for r in rows]
     assert "null_rate" not in metric_names
-    assert any(
-        "sample returned 0 rows" in rec.message for rec in caplog.records
-    )
+    assert any("sample returned 0 rows" in rec.message for rec in caplog.records)
     # Adapter's column_nulls (full path) NOT called as fallback.
     assert not fake_adapter.column_nulls.called
 
@@ -239,9 +238,7 @@ def test_non_postgres_warns_and_downgrades_to_full(caplog):
             )
             effective_mode = "full"
     assert effective_mode == "full"
-    assert any(
-        "not supported for non-Postgres" in r.message for r in caplog.records
-    )
+    assert any("not supported for non-Postgres" in r.message for r in caplog.records)
 
 
 # --- Adapter SQL contracts -------------------------------------------------
@@ -256,21 +253,29 @@ def test_postgres_adapter_sample_sql_uses_tablesample(monkeypatch):
     class _Conn:
         def execute(self, stmt, params=None):
             captured.append(str(stmt))
+
             # Simulate: columns metadata first, then the COUNT(*) row.
             class _R:
                 def fetchall(self_inner):
                     return [("id", "int"), ("email", "text")]
+
                 def fetchone(self_inner):
                     return (100, 1, 5)  # total, null id, null email
+
             return _R()
+
         def __enter__(self):
             return self
+
         def __exit__(self, *_):
             return False
 
-    monkeypatch.setattr("app.db.get_engine", lambda: mock.MagicMock(
-        connect=lambda: _Conn(),
-    ))
+    monkeypatch.setattr(
+        "app.db.get_engine",
+        lambda: mock.MagicMock(
+            connect=lambda: _Conn(),
+        ),
+    )
 
     adapter = PostgresAdapter()
     per_col, size = adapter.column_nulls_sample("t", "public", percent=1.0)
@@ -288,18 +293,25 @@ def test_postgres_adapter_approx_sql_uses_null_frac(monkeypatch):
     class _Conn:
         def execute(self, stmt, params=None):
             captured.append(str(stmt))
+
             class _R:
                 def fetchall(self_inner):
                     return [("id", "int", 0.0), ("email", "text", 0.04)]
+
             return _R()
+
         def __enter__(self):
             return self
+
         def __exit__(self, *_):
             return False
 
-    monkeypatch.setattr("app.db.get_engine", lambda: mock.MagicMock(
-        connect=lambda: _Conn(),
-    ))
+    monkeypatch.setattr(
+        "app.db.get_engine",
+        lambda: mock.MagicMock(
+            connect=lambda: _Conn(),
+        ),
+    )
 
     adapter = PostgresAdapter()
     rows = adapter.column_nulls_approx("t", "public")

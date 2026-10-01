@@ -82,11 +82,12 @@ def fake_scheduler():
 def _seed_user_with_active_connection(storage, dsn: str):
     """Create a user + project + active connection. Returns (user_id, project, connection)."""
     user_id = uuid.uuid4().hex
-    storage.create_user(user_id=user_id, email=f"u{user_id[:6]}@x.io",
-                        password_hash="x")
+    storage.create_user(user_id=user_id, email=f"u{user_id[:6]}@x.io", password_hash="x")
     project = storage.create_project(
-        project_id=uuid.uuid4().hex, user_id=user_id,
-        name="P", slug="default",
+        project_id=uuid.uuid4().hex,
+        user_id=user_id,
+        name="P",
+        slug="default",
     )
     conn = storage.create_connection(
         connection_id=uuid.uuid4().hex,
@@ -140,9 +141,14 @@ def test_run_with_timeout_preserves_db_contextvars():
 
 
 def test_add_job_for_connection_registers_with_stable_id(fake_scheduler):
-    add_job_for_connection(fake_scheduler, "proj-X", {
-        "id": "conn-Y", "interval_minutes": 15,
-    })
+    add_job_for_connection(
+        fake_scheduler,
+        "proj-X",
+        {
+            "id": "conn-Y",
+            "interval_minutes": 15,
+        },
+    )
     fake_scheduler.add_job.assert_called_once()
     call = fake_scheduler.add_job.call_args
     assert call.kwargs["id"] == "collect:proj-X:conn-Y"
@@ -164,7 +170,8 @@ def test_add_job_for_connection_run_immediately_sets_next_run_time_now(fake_sche
 
     before = datetime.now(UTC)
     add_job_for_connection(
-        fake_scheduler, "proj-X",
+        fake_scheduler,
+        "proj-X",
         {"id": "conn-Y", "interval_minutes": 1440},  # daily — would otherwise wait 24h
         run_immediately=True,
     )
@@ -200,21 +207,28 @@ def test_add_job_no_op_when_scheduler_not_running():
 def test_register_enumerates_active_connections(storage, fake_scheduler):
     """Bootstrap: every active connection in the DB gets a job."""
     _, project, conn1 = _seed_user_with_active_connection(
-        storage, dsn=f"sqlite:///{':memory:'}",
+        storage,
+        dsn=f"sqlite:///{':memory:'}",
     )
     # Second active connection in the same project.
     conn2 = storage.create_connection(
         connection_id=uuid.uuid4().hex,
-        project_id=project["id"], name="second",
+        project_id=project["id"],
+        name="second",
         dsn_encrypted=crypto.encrypt_dsn("sqlite:///:memory:"),
-        schema_name="main", interval_minutes=30, is_active=True,
+        schema_name="main",
+        interval_minutes=30,
+        is_active=True,
     )
     # Inactive connection — must NOT be registered.
     storage.create_connection(
         connection_id=uuid.uuid4().hex,
-        project_id=project["id"], name="off",
+        project_id=project["id"],
+        name="off",
         dsn_encrypted=crypto.encrypt_dsn("sqlite:///:memory:"),
-        schema_name="main", interval_minutes=10, is_active=False,
+        schema_name="main",
+        interval_minutes=10,
+        is_active=False,
     )
 
     n = register_jobs_for_all_active_connections(fake_scheduler)
@@ -237,54 +251,71 @@ def test_collect_for_connection_writes_metrics_with_project_id(storage, tmp_path
     # Workaround: skip the adapter and test the job's persistence logic
     # via a monkeypatch.
     _user_id, project, conn = _seed_user_with_active_connection(
-        storage, dsn="postgresql://u:p@unreachable:5432/d",
+        storage,
+        dsn="postgresql://u:p@unreachable:5432/d",
     )
     from collectors import metrics_collector
 
     # Stub the heavy lifting: pretend the collector produced one row.
-    fake_rows = [{
-        "ts": datetime.now(UTC), "table_name": "users",
-        "metric_name": "row_count", "value": 42.0,
-    }]
+    fake_rows = [
+        {
+            "ts": datetime.now(UTC),
+            "table_name": "users",
+            "metric_name": "row_count",
+            "value": 42.0,
+        }
+    ]
     import app.db as db_mod
 
     def fake_list_tables(self, schema):
         return [{"table_name": "users", "schema": schema}]
+
     import unittest.mock as mock
-    with mock.patch.object(metrics_collector.MetricsCollector, "collect",
-                           return_value=fake_rows), \
-         mock.patch.object(db_mod.PostgresAdapter, "list_tables",
-                           autospec=True, side_effect=fake_list_tables):
+
+    with (
+        mock.patch.object(metrics_collector.MetricsCollector, "collect", return_value=fake_rows),
+        mock.patch.object(
+            db_mod.PostgresAdapter, "list_tables", autospec=True, side_effect=fake_list_tables
+        ),
+    ):
         collect_for_connection(project["id"], conn["id"])
 
     # The metrics row should be tagged with this project's id.
-    rows = storage.get_metrics("users", "row_count", project["id"],
-                                window=__import__("datetime").timedelta(minutes=5))
+    rows = storage.get_metrics(
+        "users", "row_count", project["id"], window=__import__("datetime").timedelta(minutes=5)
+    )
     assert len(rows) == 1
     assert rows[0]["value"] == 42.0
 
     # And NOT visible from another tenant.
-    other_rows = storage.get_metrics("users", "row_count", "other-tenant",
-                                      window=__import__("datetime").timedelta(minutes=5))
+    other_rows = storage.get_metrics(
+        "users", "row_count", "other-tenant", window=__import__("datetime").timedelta(minutes=5)
+    )
     assert other_rows == []
 
 
 def test_collect_for_connection_refreshes_drift_cache_per_project(
-    storage, monkeypatch,
+    storage,
+    monkeypatch,
 ):
     """Регрессионный (#fix-per-project-drift): tenant per-project тик
     раньше пропускал drift refresh — он жил в legacy collect_all_tables.
     Эффект: /api/drift/<table> тенантов отдавал stale данные. Теперь
     тик пересчитывает drift с tables=table_names этого подключения."""
     _user_id, project, conn = _seed_user_with_active_connection(
-        storage, dsn="postgresql://u:p@unreachable:5432/d",
+        storage,
+        dsn="postgresql://u:p@unreachable:5432/d",
     )
     from collectors import metrics_collector
 
-    fake_rows = [{
-        "ts": datetime.now(UTC), "table_name": "users",
-        "metric_name": "row_count", "value": 42.0,
-    }]
+    fake_rows = [
+        {
+            "ts": datetime.now(UTC),
+            "table_name": "users",
+            "metric_name": "row_count",
+            "value": 42.0,
+        }
+    ]
     import app.db as db_mod
 
     def fake_list_tables(self, schema):
@@ -298,12 +329,14 @@ def test_collect_for_connection_refreshes_drift_cache_per_project(
         return {"tables": len(tables or []), "rows": 0}
 
     import unittest.mock as mock
-    with mock.patch.object(metrics_collector.MetricsCollector, "collect",
-                           return_value=fake_rows), \
-         mock.patch.object(db_mod.PostgresAdapter, "list_tables",
-                           autospec=True, side_effect=fake_list_tables), \
-         mock.patch.object(drift_mod, "compute_and_store_drift_all",
-                           side_effect=fake_compute):
+
+    with (
+        mock.patch.object(metrics_collector.MetricsCollector, "collect", return_value=fake_rows),
+        mock.patch.object(
+            db_mod.PostgresAdapter, "list_tables", autospec=True, side_effect=fake_list_tables
+        ),
+        mock.patch.object(drift_mod, "compute_and_store_drift_all", side_effect=fake_compute),
+    ):
         collect_for_connection(project["id"], conn["id"])
 
     assert len(captured) == 1
@@ -317,14 +350,16 @@ def test_collect_for_connection_skips_inactive(storage):
     callback.
     """
     _user_id, project, conn = _seed_user_with_active_connection(
-        storage, dsn="postgresql://u:p@h/d",
+        storage,
+        dsn="postgresql://u:p@h/d",
     )
     storage.set_connection_active(project["id"], conn["id"], is_active=False)
     # Should return without raising even though DSN host is unreachable.
     collect_for_connection(project["id"], conn["id"])
     # And no metrics written.
-    rows = storage.get_metrics("users", "row_count", project["id"],
-                                window=__import__("datetime").timedelta(minutes=5))
+    rows = storage.get_metrics(
+        "users", "row_count", project["id"], window=__import__("datetime").timedelta(minutes=5)
+    )
     assert rows == []
 
 
@@ -339,28 +374,38 @@ def test_collect_for_connection_handles_unknown_id(storage):
 def test_list_jobs_for_user_filters_to_owned_projects(storage, fake_scheduler):
     """User-A sees only their connection jobs; user-B's are hidden."""
     user_a, project_a, conn_a = _seed_user_with_active_connection(
-        storage, dsn="postgresql://u:p@h/d",
+        storage,
+        dsn="postgresql://u:p@h/d",
     )
     # Second user with their own project + connection.
     user_b = uuid.uuid4().hex
     storage.create_user(user_id=user_b, email="b@x.io", password_hash="x")
     project_b = storage.create_project(
-        project_id=uuid.uuid4().hex, user_id=user_b,
-        name="B", slug="default",
+        project_id=uuid.uuid4().hex,
+        user_id=user_b,
+        name="B",
+        slug="default",
     )
     conn_b = storage.create_connection(
-        connection_id=uuid.uuid4().hex, project_id=project_b["id"],
-        name="b-conn", dsn_encrypted=crypto.encrypt_dsn("postgresql://u:p@h/d"),
-        schema_name="public", interval_minutes=15, is_active=True,
+        connection_id=uuid.uuid4().hex,
+        project_id=project_b["id"],
+        name="b-conn",
+        dsn_encrypted=crypto.encrypt_dsn("postgresql://u:p@h/d"),
+        schema_name="public",
+        interval_minutes=15,
+        is_active=True,
     )
 
-    add_job_for_connection(fake_scheduler, project_a["id"],
-                            {"id": conn_a["id"], "interval_minutes": 15})
-    add_job_for_connection(fake_scheduler, project_b["id"],
-                            {"id": conn_b["id"], "interval_minutes": 15})
+    add_job_for_connection(
+        fake_scheduler, project_a["id"], {"id": conn_a["id"], "interval_minutes": 15}
+    )
+    add_job_for_connection(
+        fake_scheduler, project_b["id"], {"id": conn_b["id"], "interval_minutes": 15}
+    )
     # Add a global job — must NOT appear in either user's list.
-    fake_scheduler.add_job(lambda: None, "interval", minutes=15,
-                            id="collect_all_tables", name="collect_all_tables")
+    fake_scheduler.add_job(
+        lambda: None, "interval", minutes=15, id="collect_all_tables", name="collect_all_tables"
+    )
 
     a_jobs = list_jobs_for_user(fake_scheduler, user_a)
     b_jobs = list_jobs_for_user(fake_scheduler, user_b)
@@ -373,7 +418,8 @@ def test_list_jobs_for_user_filters_to_owned_projects(storage, fake_scheduler):
 
 def test_user_owns_job_rejects_cross_tenant(storage):
     user_a, project_a, conn_a = _seed_user_with_active_connection(
-        storage, dsn="postgresql://u:p@h/d",
+        storage,
+        dsn="postgresql://u:p@h/d",
     )
     user_b = uuid.uuid4().hex
     storage.create_user(user_id=user_b, email="b@x.io", password_hash="x")
@@ -388,6 +434,7 @@ def test_user_owns_job_rejects_cross_tenant(storage):
 
 # --- Per-project notifications wiring (#154) -------------------------------
 
+
 def _tg_token(bot_id: str = "0000000001") -> str:
     """Synthetic Telegram bot token — format-valid for our validators
     but obviously fake (leading zeros — real Telegram bot IDs don't have
@@ -396,8 +443,9 @@ def _tg_token(bot_id: str = "0000000001") -> str:
     return bot_id + ":" + "A" * 35
 
 
-def _run_collect_with_anomaly_stub(storage, project_id, conn_id, table_name,
-                                   is_anomaly, monkeypatch):
+def _run_collect_with_anomaly_stub(
+    storage, project_id, conn_id, table_name, is_anomaly, monkeypatch
+):
     """Drive collect_for_connection through one tick with a fake target +
     a stubbed anomaly_detector.score_table that returns a single point."""
     import unittest.mock as mock
@@ -405,27 +453,36 @@ def _run_collect_with_anomaly_stub(storage, project_id, conn_id, table_name,
     import app.db as db_mod
     from collectors import metrics_collector
 
-    fake_rows = [{
-        "ts": datetime.now(UTC), "table_name": table_name,
-        "metric_name": "row_count", "value": 42.0,
-    }]
+    fake_rows = [
+        {
+            "ts": datetime.now(UTC),
+            "table_name": table_name,
+            "metric_name": "row_count",
+            "value": 42.0,
+        }
+    ]
+
     def fake_list_tables(self, schema):
         return [{"table_name": table_name, "schema": schema}]
 
-    fake_score = [{
-        "ts": datetime.now(UTC).isoformat(timespec="seconds"),
-        "score": -0.22 if is_anomaly else 0.05,
-        "is_anomaly": 1 if is_anomaly else 0,
-    }]
+    fake_score = [
+        {
+            "ts": datetime.now(UTC).isoformat(timespec="seconds"),
+            "score": -0.22 if is_anomaly else 0.05,
+            "is_anomaly": 1 if is_anomaly else 0,
+        }
+    ]
     monkeypatch.setattr(
         "ml.anomaly_detector.score_table",
         lambda table, window_days=14, project_id="legacy": fake_score,
     )
 
-    with mock.patch.object(metrics_collector.MetricsCollector, "collect",
-                           return_value=fake_rows), \
-         mock.patch.object(db_mod.PostgresAdapter, "list_tables",
-                           autospec=True, side_effect=fake_list_tables):
+    with (
+        mock.patch.object(metrics_collector.MetricsCollector, "collect", return_value=fake_rows),
+        mock.patch.object(
+            db_mod.PostgresAdapter, "list_tables", autospec=True, side_effect=fake_list_tables
+        ),
+    ):
         collect_for_connection(project_id, conn_id)
 
 
@@ -433,7 +490,8 @@ def test_collect_for_connection_notifies_when_configured(storage, monkeypatch):
     """Tenant with valid Telegram config gets notify_anomaly called with
     its OWN bot_token / chat_id on a confirmed anomaly."""
     _user, project, conn = _seed_user_with_active_connection(
-        storage, dsn="postgresql://u:p@unreachable:5432/d",
+        storage,
+        dsn="postgresql://u:p@unreachable:5432/d",
     )
     storage.save_project_notifications(
         project["id"],
@@ -443,20 +501,32 @@ def test_collect_for_connection_notifies_when_configured(storage, monkeypatch):
     )
 
     captures = []
-    def fake_notify(pid, table, ts, score, *, bot_token, chat_id,
-                    throttle_minutes=None, metric="row_count"):
-        captures.append({
-            "pid": pid, "table": table, "score": score,
-            "bot_token": bot_token, "chat_id": chat_id,
-            "throttle": throttle_minutes,
-        })
+
+    def fake_notify(
+        pid, table, ts, score, *, bot_token, chat_id, throttle_minutes=None, metric="row_count"
+    ):
+        captures.append(
+            {
+                "pid": pid,
+                "table": table,
+                "score": score,
+                "bot_token": bot_token,
+                "chat_id": chat_id,
+                "throttle": throttle_minutes,
+            }
+        )
 
     monkeypatch.setattr(
-        "app.notifications.telegram.notify_anomaly", fake_notify,
+        "app.notifications.telegram.notify_anomaly",
+        fake_notify,
     )
     _run_collect_with_anomaly_stub(
-        storage, project["id"], conn["id"], "users",
-        is_anomaly=True, monkeypatch=monkeypatch,
+        storage,
+        project["id"],
+        conn["id"],
+        "users",
+        is_anomaly=True,
+        monkeypatch=monkeypatch,
     )
 
     assert len(captures) == 1
@@ -472,7 +542,8 @@ def test_collect_for_connection_skips_notify_when_not_configured(storage, monkey
     """Tenant with no project_notifications row gets ZERO notify calls,
     even on a confirmed anomaly. This is the "no global fallback" rule."""
     _user, project, conn = _seed_user_with_active_connection(
-        storage, dsn="postgresql://u:p@unreachable:5432/d",
+        storage,
+        dsn="postgresql://u:p@unreachable:5432/d",
     )
 
     captures = []
@@ -481,8 +552,12 @@ def test_collect_for_connection_skips_notify_when_not_configured(storage, monkey
         lambda *args, **kwargs: captures.append((args, kwargs)),
     )
     _run_collect_with_anomaly_stub(
-        storage, project["id"], conn["id"], "users",
-        is_anomaly=True, monkeypatch=monkeypatch,
+        storage,
+        project["id"],
+        conn["id"],
+        "users",
+        is_anomaly=True,
+        monkeypatch=monkeypatch,
     )
     assert captures == []
 
@@ -491,7 +566,8 @@ def test_collect_for_connection_skips_notify_when_no_anomaly(storage, monkeypatc
     """Configured tenant + healthy score → still no notification (only
     real anomalies fire alerts; the throttle doesn't even get touched)."""
     _user, project, conn = _seed_user_with_active_connection(
-        storage, dsn="postgresql://u:p@unreachable:5432/d",
+        storage,
+        dsn="postgresql://u:p@unreachable:5432/d",
     )
     storage.save_project_notifications(
         project["id"],
@@ -506,8 +582,12 @@ def test_collect_for_connection_skips_notify_when_no_anomaly(storage, monkeypatc
         lambda *args, **kwargs: captures.append(args),
     )
     _run_collect_with_anomaly_stub(
-        storage, project["id"], conn["id"], "orders",
-        is_anomaly=False, monkeypatch=monkeypatch,
+        storage,
+        project["id"],
+        conn["id"],
+        "orders",
+        is_anomaly=False,
+        monkeypatch=monkeypatch,
     )
     assert captures == []
 
@@ -517,7 +597,8 @@ def test_collect_for_connection_cross_tenant_notification_isolation(storage, mon
     Pins the no-fallback / no-cross-leak invariant at the wiring layer."""
     # Tenant A — Telegram configured.
     _user_a, proj_a, conn_a = _seed_user_with_active_connection(
-        storage, dsn="postgresql://u:p@unreachable:5432/a",
+        storage,
+        dsn="postgresql://u:p@unreachable:5432/a",
     )
     storage.save_project_notifications(
         proj_a["id"],
@@ -527,15 +608,21 @@ def test_collect_for_connection_cross_tenant_notification_isolation(storage, mon
     )
     # Tenant B — also configured, different chat.
     user_b = uuid.uuid4().hex
-    storage.create_user(user_id=user_b, email=f"b{user_b[:5]}@x.io",
-                        password_hash="x")
+    storage.create_user(user_id=user_b, email=f"b{user_b[:5]}@x.io", password_hash="x")
     proj_b = storage.create_project(
-        project_id=uuid.uuid4().hex, user_id=user_b, name="B", slug="default-b",
+        project_id=uuid.uuid4().hex,
+        user_id=user_b,
+        name="B",
+        slug="default-b",
     )
     conn_b = storage.create_connection(
-        connection_id=uuid.uuid4().hex, project_id=proj_b["id"],
-        name="b", dsn_encrypted=crypto.encrypt_dsn("postgresql://u:p@unreachable:5432/b"),
-        schema_name="public", interval_minutes=15, is_active=True,
+        connection_id=uuid.uuid4().hex,
+        project_id=proj_b["id"],
+        name="b",
+        dsn_encrypted=crypto.encrypt_dsn("postgresql://u:p@unreachable:5432/b"),
+        schema_name="public",
+        interval_minutes=15,
+        is_active=True,
     )
     storage.save_project_notifications(
         proj_b["id"],
@@ -545,23 +632,34 @@ def test_collect_for_connection_cross_tenant_notification_isolation(storage, mon
     )
 
     captures = []
-    def fake_notify(pid, table, ts, score, *, bot_token, chat_id,
-                    throttle_minutes=None, metric="row_count"):
+
+    def fake_notify(
+        pid, table, ts, score, *, bot_token, chat_id, throttle_minutes=None, metric="row_count"
+    ):
         captures.append({"pid": pid, "chat_id": chat_id})
 
     monkeypatch.setattr(
-        "app.notifications.telegram.notify_anomaly", fake_notify,
+        "app.notifications.telegram.notify_anomaly",
+        fake_notify,
     )
 
     # Tick A — anomaly fires; B is not invoked at all.
     _run_collect_with_anomaly_stub(
-        storage, proj_a["id"], conn_a["id"], "orders",
-        is_anomaly=True, monkeypatch=monkeypatch,
+        storage,
+        proj_a["id"],
+        conn_a["id"],
+        "orders",
+        is_anomaly=True,
+        monkeypatch=monkeypatch,
     )
     # Tick B — healthy, no notification.
     _run_collect_with_anomaly_stub(
-        storage, proj_b["id"], conn_b["id"], "orders",
-        is_anomaly=False, monkeypatch=monkeypatch,
+        storage,
+        proj_b["id"],
+        conn_b["id"],
+        "orders",
+        is_anomaly=False,
+        monkeypatch=monkeypatch,
     )
 
     assert len(captures) == 1

@@ -19,6 +19,7 @@ Connection:
     Defaults to clickhouse+native://default@localhost:19000/demo to match
     `make clickhouse-up`. Override via CLICKHOUSE_URL env var.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -40,8 +41,7 @@ _CATEGORIES = ["Electronics", "Clothing", "Food", "Books", "Home", "Sports"]
 _COUNTRIES = ["RU", "US", "DE", "GB", "FR", "CN", "BR"]
 _SIGNUP_SOURCES = ["web", "mobile", "api", "referral"]
 _STATUSES = ["pending", "confirmed", "shipped", "delivered", "cancelled"]
-_EVENT_TYPES = ["login", "view", "add_to_cart", "checkout", "purchase",
-                "error", "logout"]
+_EVENT_TYPES = ["login", "view", "add_to_cart", "checkout", "purchase", "error", "logout"]
 _SERVER_IDS = ["server-1", "server-2", "server-3"]
 _DEVICE_TYPES = ["mobile", "desktop", "tablet"]
 
@@ -52,7 +52,6 @@ _SCHEMA_STATEMENTS = [
     # Database is created by docker-compose CLICKHOUSE_DB; keep an IF NOT
     # EXISTS guard so the script works against an existing CH outside Docker.
     "CREATE DATABASE IF NOT EXISTS demo",
-
     # users — flat profile data, MergeTree ordered by signup_date so any
     # WHERE created_at <= T snapshot scan stays sequential.
     """
@@ -66,7 +65,6 @@ _SCHEMA_STATEMENTS = [
         is_active    UInt8
     ) ENGINE = MergeTree() ORDER BY (signup_date, user_id)
     """,
-
     # products — small dimension table.
     """
     CREATE TABLE IF NOT EXISTS demo.products (
@@ -77,7 +75,6 @@ _SCHEMA_STATEMENTS = [
         created_at   DateTime
     ) ENGINE = MergeTree() ORDER BY (created_at, product_id)
     """,
-
     # orders — main fact-table for null-rate / changepoint demos.
     """
     CREATE TABLE IF NOT EXISTS demo.orders (
@@ -90,7 +87,6 @@ _SCHEMA_STATEMENTS = [
         created_at   DateTime
     ) ENGINE = MergeTree() ORDER BY (created_at, order_id)
     """,
-
     # events — append-only stream, the bread-and-butter of ClickHouse demos.
     # event_id as String (UUID-as-text) — CH has a UUID type but String
     # plays nicer with the SQLAlchemy round-trip for the simple seed here.
@@ -123,6 +119,7 @@ def _reset_tables(engine) -> None:
     tolerated; CH errors with code 60 for unknown table.
     """
     from sqlalchemy.exc import DatabaseError
+
     for table in ("users", "products", "orders", "events"):
         try:
             with engine.begin() as conn:
@@ -133,6 +130,7 @@ def _reset_tables(engine) -> None:
 
 # ── Seeders ───────────────────────────────────────────────────────────────
 
+
 def _seed_users(engine, count: int) -> None:
     """Insert *count* users with signup_date spread over the last 365 days."""
     now = datetime.now(UTC)
@@ -140,16 +138,17 @@ def _seed_users(engine, count: int) -> None:
     rows = []
     for i in range(1, count + 1):
         days_ago = rng.randint(0, 365)
-        rows.append({
-            "user_id": i,
-            "email": f"user{i}@example.com",
-            "name": f"User {i}",
-            "country": rng.choice(_COUNTRIES),
-            "signup_date": now - timedelta(days=days_ago,
-                                           seconds=rng.randint(0, 86399)),
-            "signup_source": rng.choice(_SIGNUP_SOURCES),
-            "is_active": 1 if rng.random() > 0.05 else 0,
-        })
+        rows.append(
+            {
+                "user_id": i,
+                "email": f"user{i}@example.com",
+                "name": f"User {i}",
+                "country": rng.choice(_COUNTRIES),
+                "signup_date": now - timedelta(days=days_ago, seconds=rng.randint(0, 86399)),
+                "signup_source": rng.choice(_SIGNUP_SOURCES),
+                "is_active": 1 if rng.random() > 0.05 else 0,
+            }
+        )
     _bulk_insert(
         engine,
         "INSERT INTO demo.users (user_id, email, name, country, signup_date, "
@@ -174,8 +173,7 @@ def _seed_products(engine, count: int) -> None:
     ]
     _bulk_insert(
         engine,
-        "INSERT INTO demo.products (product_id, name, category, price, "
-        "created_at) VALUES",
+        "INSERT INTO demo.products (product_id, name, category, price, created_at) VALUES",
         rows,
     )
     logger.info("Seeded %d products", count)
@@ -188,16 +186,18 @@ def _seed_orders(engine, count: int, max_user_id: int, max_product_id: int) -> N
     for i in range(1, count + 1):
         qty = rng.randint(1, 5)
         price = round(rng.uniform(5, 500) * qty, 2)
-        rows.append({
-            "order_id": i,
-            "user_id": rng.randint(1, max_user_id),
-            "product_id": rng.randint(1, max_product_id),
-            "status": rng.choice(_STATUSES),
-            "quantity": qty,
-            "total_price": price,
-            "created_at": now - timedelta(days=rng.randint(0, 90),
-                                          seconds=rng.randint(0, 86399)),
-        })
+        rows.append(
+            {
+                "order_id": i,
+                "user_id": rng.randint(1, max_user_id),
+                "product_id": rng.randint(1, max_product_id),
+                "status": rng.choice(_STATUSES),
+                "quantity": qty,
+                "total_price": price,
+                "created_at": now
+                - timedelta(days=rng.randint(0, 90), seconds=rng.randint(0, 86399)),
+            }
+        )
     _bulk_insert(
         engine,
         "INSERT INTO demo.orders (order_id, user_id, product_id, status, "
@@ -260,6 +260,7 @@ def _bulk_insert(engine, sql: str, rows: list[dict]) -> None:
 
 # ── CLI ────────────────────────────────────────────────────────────────────
 
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     parser = argparse.ArgumentParser(description="Seed local ClickHouse demo target.")
@@ -268,11 +269,13 @@ def main() -> None:
     parser.add_argument("--orders", type=int, default=5_000)
     parser.add_argument("--events", type=int, default=10_000)
     parser.add_argument(
-        "--reset", action="store_true",
+        "--reset",
+        action="store_true",
         help="TRUNCATE all demo tables before seeding (destructive!)",
     )
     parser.add_argument(
-        "--url", default=os.environ.get("CLICKHOUSE_URL", DEFAULT_URL),
+        "--url",
+        default=os.environ.get("CLICKHOUSE_URL", DEFAULT_URL),
         help=f"ClickHouse SQLAlchemy URL (default: {DEFAULT_URL})",
     )
     args = parser.parse_args()

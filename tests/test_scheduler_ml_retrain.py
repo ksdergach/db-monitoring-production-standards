@@ -38,12 +38,14 @@ def _seed_metrics_for_project(storage, project_id: str, table: str = "users"):
     now = datetime.now(UTC)
     # Just enough rows so the project appears in list_project_ids_with_metrics.
     for h in range(4):
-        rows.append({
-            "ts": now - timedelta(hours=h),
-            "table_name": table,
-            "metric_name": "row_count",
-            "value": 100 + h,
-        })
+        rows.append(
+            {
+                "ts": now - timedelta(hours=h),
+                "table_name": table,
+                "metric_name": "row_count",
+                "value": 100 + h,
+            }
+        )
     storage.save_metrics(rows, project_id)
 
 
@@ -165,8 +167,10 @@ def test_retrain_anomaly_detectors_iterates_per_project_and_scopes_scoring(
         score_calls.append({"name": name, "project_id": project_id})
         return []  # пустой результат — save_anomaly_scores не вызовется
 
-    with patch("ml.anomaly_detector.retrain_all", side_effect=_fake_retrain), \
-         patch("ml.anomaly_detector.score_table", side_effect=_fake_score):
+    with (
+        patch("ml.anomaly_detector.retrain_all", side_effect=_fake_retrain),
+        patch("ml.anomaly_detector.score_table", side_effect=_fake_score),
+    ):
         scheduler.retrain_anomaly_detectors()
 
     retrain_pids = {c["project_id"] for c in retrain_calls}

@@ -9,6 +9,7 @@ from app.app import create_app
 @pytest.fixture
 def client(monkeypatch):
     import collectors.scheduler as sched_mod
+
     monkeypatch.setattr(sched_mod, "_scheduler", None)
     app = create_app({"TESTING": True})
     with app.test_client() as c:
@@ -29,8 +30,10 @@ def fake_job():
 # GET /admin/jobs
 # ---------------------------------------------------------------------------
 
+
 def test_list_jobs_returns_job_info(client, monkeypatch, fake_job):
     import collectors.scheduler as sched_mod
+
     fake_scheduler = MagicMock()
     fake_scheduler.get_jobs.return_value = [fake_job]
     monkeypatch.setattr(sched_mod, "_scheduler", fake_scheduler)
@@ -48,6 +51,7 @@ def test_list_jobs_returns_job_info(client, monkeypatch, fake_job):
 
 def test_list_jobs_when_scheduler_not_running(client, monkeypatch):
     import collectors.scheduler as sched_mod
+
     monkeypatch.setattr(sched_mod, "_scheduler", None)
 
     resp = client.get("/admin/jobs")
@@ -58,6 +62,7 @@ def test_list_jobs_when_scheduler_not_running(client, monkeypatch):
 
 def test_list_jobs_next_run_time_none(client, monkeypatch, fake_job):
     import collectors.scheduler as sched_mod
+
     fake_job.next_run_time = None
     fake_scheduler = MagicMock()
     fake_scheduler.get_jobs.return_value = [fake_job]
@@ -73,8 +78,10 @@ def test_list_jobs_next_run_time_none(client, monkeypatch, fake_job):
 # POST /admin/jobs/<job_id>/run
 # ---------------------------------------------------------------------------
 
+
 def test_run_job_triggers_immediately(client, monkeypatch, fake_job):
     import collectors.scheduler as sched_mod
+
     fake_scheduler = MagicMock()
     fake_scheduler.get_job.return_value = fake_job
     monkeypatch.setattr(sched_mod, "_scheduler", fake_scheduler)
@@ -93,6 +100,7 @@ def test_run_job_triggers_immediately(client, monkeypatch, fake_job):
 
 def test_run_job_scheduler_not_running(client, monkeypatch):
     import collectors.scheduler as sched_mod
+
     monkeypatch.setattr(sched_mod, "_scheduler", None)
 
     resp = client.post("/admin/jobs/collect_all_tables/run")
@@ -103,6 +111,7 @@ def test_run_job_scheduler_not_running(client, monkeypatch):
 
 def test_run_job_not_found(client, monkeypatch):
     import collectors.scheduler as sched_mod
+
     fake_scheduler = MagicMock()
     fake_scheduler.get_job.return_value = None
     monkeypatch.setattr(sched_mod, "_scheduler", fake_scheduler)

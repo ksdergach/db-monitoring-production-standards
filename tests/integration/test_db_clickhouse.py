@@ -57,26 +57,31 @@ def _seed(ch_container):
     raw_url = _to_sqlalchemy_url(ch_container.get_connection_url())
     engine = create_engine(raw_url, future=True)
     with engine.begin() as conn:
-        conn.execute(text("""
+        conn.execute(
+            text("""
             CREATE TABLE users (
                 id      UInt64,
                 email   Nullable(String),
                 country String
             ) ENGINE = MergeTree() ORDER BY id
-        """))
-        conn.execute(text(
-            "INSERT INTO users (id, email, country) VALUES "
-            "(1, 'a@x.io', 'RU'), "
-            "(2, NULL,     'US'), "
-            "(3, 'c@x.io', 'RU'), "
-            "(4, NULL,     'DE')"
-        ))
+        """)
+        )
+        conn.execute(
+            text(
+                "INSERT INTO users (id, email, country) VALUES "
+                "(1, 'a@x.io', 'RU'), "
+                "(2, NULL,     'US'), "
+                "(3, 'c@x.io', 'RU'), "
+                "(4, NULL,     'DE')"
+            )
+        )
     engine.dispose()
 
 
 def test_list_tables_returns_seeded_table(ch_url, ch_database):
     with use_target_db(ch_url):
         from app.db import list_tables
+
         tables = list_tables(schema=ch_database)
     names = [t["table_name"] for t in tables]
     assert "users" in names
@@ -85,6 +90,7 @@ def test_list_tables_returns_seeded_table(ch_url, ch_database):
 def test_table_stats_reports_row_count_and_size(ch_url, ch_database):
     with use_target_db(ch_url):
         from app.db import table_stats
+
         stats = table_stats("users", schema=ch_database)
     assert stats is not None
     assert stats["table_name"] == "users"
@@ -95,12 +101,14 @@ def test_table_stats_reports_row_count_and_size(ch_url, ch_database):
 def test_table_stats_returns_none_for_missing_table(ch_url, ch_database):
     with use_target_db(ch_url):
         from app.db import table_stats
+
         assert table_stats("does_not_exist", schema=ch_database) is None
 
 
 def test_table_schema_detects_nullable(ch_url, ch_database):
     with use_target_db(ch_url):
         from app.db import table_schema
+
         cols = table_schema("users", schema=ch_database)
     by_name = {c["name"]: c for c in cols}
     assert by_name["email"]["nullable"] is True
@@ -113,6 +121,7 @@ def test_table_schema_detects_nullable(ch_url, ch_database):
 def test_column_nulls_counts_only_nullable_columns(ch_url, ch_database):
     with use_target_db(ch_url):
         from app.db import column_nulls
+
         cols = column_nulls("users", schema=ch_database)
     by_name = {c["column"]: c for c in cols}
     # 2 of 4 emails are NULL (the column is Nullable(String)).

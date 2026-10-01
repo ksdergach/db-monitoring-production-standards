@@ -1,4 +1,5 @@
 """Tests for app/llm.py and POST /api/explain."""
+
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
@@ -12,6 +13,7 @@ from app.app import create_app
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _ts() -> str:
     return datetime(2026, 4, 20, 12, 0, tzinfo=UTC).isoformat(timespec="seconds")
 
@@ -20,8 +22,11 @@ def _ts() -> str:
 # _build_prompt
 # ---------------------------------------------------------------------------
 
+
 def test_build_prompt_contains_table_and_ts(tmp_path, monkeypatch):
-    monkeypatch.setattr("app.llm.get_schema_snapshot", lambda t: [{"name": "id", "type": "int", "nullable": False}])
+    monkeypatch.setattr(
+        "app.llm.get_schema_snapshot", lambda t: [{"name": "id", "type": "int", "nullable": False}]
+    )
     monkeypatch.setattr("app.llm.get_metrics", lambda t, m, p=None, **kw: [])
     monkeypatch.setattr("app.llm.get_changepoints", lambda t, **kw: [])
     monkeypatch.setattr("app.llm.get_anomaly_scores", lambda t, **kw: [])
@@ -40,8 +45,10 @@ def test_build_prompt_includes_both_metrics(tmp_path, monkeypatch):
     monkeypatch.setattr("app.llm.get_schema_snapshot", lambda t: None)
     rc_rows = [{"ts": _ts(), "value": 500.0, "tags": None}]
     nr_rows = [{"ts": _ts(), "value": 0.15, "tags": None}]
+
     def _fake_metrics(table, metric, project_id=None, **kw):
         return rc_rows if metric == "row_count" else nr_rows
+
     monkeypatch.setattr("app.llm.get_metrics", _fake_metrics)
     monkeypatch.setattr("app.llm.get_changepoints", lambda t, **kw: [])
     monkeypatch.setattr("app.llm.get_anomaly_scores", lambda t, **kw: [])
@@ -56,6 +63,7 @@ def test_build_prompt_includes_both_metrics(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 # _parse_nim_response
 # ---------------------------------------------------------------------------
+
 
 def test_parse_nim_response_clean_json():
     raw = '{"explanation": "ETL failed", "suggested_fix": "Rerun", "confidence": 0.9}'
@@ -96,6 +104,7 @@ def test_parse_nim_response_invalid_returns_empty():
 # _rule_based_explain
 # ---------------------------------------------------------------------------
 
+
 def test_rule_based_explain_returns_correct_structure(monkeypatch):
     monkeypatch.setattr("app.llm.get_metrics", lambda t, m, p=None, **kw: [])
     result = llm_mod._rule_based_explain("orders", "row_count", _ts())
@@ -109,8 +118,10 @@ def test_rule_based_explain_row_drop(monkeypatch):
         {"ts": "2026-04-20T11:00:00+00:00", "value": 1000.0, "tags": None},
         {"ts": "2026-04-20T12:00:00+00:00", "value": 200.0, "tags": None},
     ]
+
     def _fake_metrics(table, metric, project_id=None, **kw):
         return rows if metric == "row_count" else []
+
     monkeypatch.setattr("app.llm.get_metrics", _fake_metrics)
     result = llm_mod._rule_based_explain("orders", "row_count", _ts())
     assert "снижение" in result["explanation"].lower() or "удален" in result["explanation"].lower()
@@ -118,8 +129,10 @@ def test_rule_based_explain_row_drop(monkeypatch):
 
 def test_rule_based_explain_high_null_rate(monkeypatch):
     nr_rows = [{"ts": _ts(), "value": 0.35, "tags": None}]
+
     def _fake_metrics(table, metric, project_id=None, **kw):
         return [] if metric == "row_count" else nr_rows
+
     monkeypatch.setattr("app.llm.get_metrics", _fake_metrics)
     result = llm_mod._rule_based_explain("orders", "null_rate", _ts())
     assert "null" in result["explanation"].lower() or "пропуск" in result["explanation"].lower()
@@ -141,13 +154,16 @@ def test_rule_based_explain_uses_project_id(monkeypatch):
 # explain_anomaly — fallback on network error
 # ---------------------------------------------------------------------------
 
+
 def test_explain_anomaly_falls_back_on_network_error(monkeypatch):
     monkeypatch.setattr("app.config.settings.NIM_API_KEY", "test-key")
     monkeypatch.setattr("app.llm.get_schema_snapshot", lambda t: None)
     monkeypatch.setattr("app.llm.get_metrics", lambda t, m, p=None, **kw: [])
     monkeypatch.setattr("app.llm.get_changepoints", lambda t, **kw: [])
     monkeypatch.setattr("app.llm.get_anomaly_scores", lambda t, **kw: [])
-    monkeypatch.setattr("app.llm._call_nim", MagicMock(side_effect=httpx.ConnectError("unreachable")))
+    monkeypatch.setattr(
+        "app.llm._call_nim", MagicMock(side_effect=httpx.ConnectError("unreachable"))
+    )
 
     result = llm_mod.explain_anomaly("orders", "row_count", _ts())
     assert "explanation" in result
@@ -166,9 +182,11 @@ def test_explain_anomaly_no_api_key_returns_rule_based(monkeypatch):
 # Cache: second call must not invoke LLM
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def storage(tmp_path, monkeypatch):
     import app.metrics_storage as storage_mod
+
     db_path = tmp_path / "metrics.db"
     monkeypatch.setattr(storage_mod.settings, "MONITOR_DB_URL", f"sqlite:///{db_path}")
     monkeypatch.setattr(storage_mod, "_engine", None)
@@ -202,12 +220,16 @@ def test_cache_expired_returns_none(storage, monkeypatch):
     # Save with a created_at far in the past (25 h ago)
     old_created_at = _iso(datetime.now(UTC) - timedelta(hours=25))
     from sqlalchemy import text
+
     with storage.get_engine().begin() as conn:
-        conn.execute(text("""
+        conn.execute(
+            text("""
             INSERT OR REPLACE INTO llm_explanations
                 (table_name, metric, ts, explanation, suggested_fix, confidence, created_at)
             VALUES ('orders', 'row_count', :ts, 'old', 'old fix', 0.5, :ca)
-        """), {"ts": ts, "ca": old_created_at})
+        """),
+            {"ts": ts, "ca": old_created_at},
+        )
 
     assert get_cached_explanation("orders", "row_count", ts) is None
 
@@ -215,6 +237,7 @@ def test_cache_expired_returns_none(storage, monkeypatch):
 # ---------------------------------------------------------------------------
 # POST /api/explain endpoint
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def client():
@@ -228,12 +251,16 @@ _KNOWN_TABLES = [{"table_name": "orders"}, {"table_name": "users"}]
 
 def test_explain_endpoint_returns_200(client):
     payload = {"explanation": "причина", "suggested_fix": "решение", "confidence": 0.8}
-    with patch("app.llm.explain_anomaly", return_value=payload), \
-         patch("app.api.get_cached_explanation", return_value=None), \
-         patch("app.api.save_explanation"), \
-         patch("app.api.get_latest_metric", return_value={"value": 42, "ts": _ts()}), \
-         patch("app.api.get_anomaly_scores", return_value=[]):
-        resp = client.post("/api/explain", json={"table": "orders", "metric": "row_count", "ts": _ts()})
+    with (
+        patch("app.llm.explain_anomaly", return_value=payload),
+        patch("app.api.get_cached_explanation", return_value=None),
+        patch("app.api.save_explanation"),
+        patch("app.api.get_latest_metric", return_value={"value": 42, "ts": _ts()}),
+        patch("app.api.get_anomaly_scores", return_value=[]),
+    ):
+        resp = client.post(
+            "/api/explain", json={"table": "orders", "metric": "row_count", "ts": _ts()}
+        )
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["explanation"] == "причина"
@@ -242,22 +269,30 @@ def test_explain_endpoint_returns_200(client):
 
 def test_explain_endpoint_accepts_project_scoped_anomaly_table(client):
     payload = {"explanation": "iceberg reason", "suggested_fix": "iceberg fix", "confidence": 0.7}
-    with patch("app.llm.explain_anomaly", return_value=payload), \
-         patch("app.api.get_cached_explanation", return_value=None), \
-         patch("app.api.save_explanation"), \
-         patch("app.api.get_latest_metric", return_value=None), \
-         patch("app.api.get_anomaly_scores", return_value=[{"ts": _ts(), "is_anomaly": True}]), \
-         patch("app.api.list_tables", return_value=[]):
-        resp = client.post("/api/explain", json={"table": "sessions", "metric": "row_count", "ts": _ts()})
+    with (
+        patch("app.llm.explain_anomaly", return_value=payload),
+        patch("app.api.get_cached_explanation", return_value=None),
+        patch("app.api.save_explanation"),
+        patch("app.api.get_latest_metric", return_value=None),
+        patch("app.api.get_anomaly_scores", return_value=[{"ts": _ts(), "is_anomaly": True}]),
+        patch("app.api.list_tables", return_value=[]),
+    ):
+        resp = client.post(
+            "/api/explain", json={"table": "sessions", "metric": "row_count", "ts": _ts()}
+        )
     assert resp.status_code == 200
     assert resp.get_json()["explanation"] == "iceberg reason"
 
 
 def test_explain_endpoint_unknown_table_returns_404(client):
-    with patch("app.api.get_cached_explanation", return_value=None), \
-         patch("app.api.get_latest_metric", return_value=None), \
-         patch("app.api.get_anomaly_scores", return_value=[]):
-        resp = client.post("/api/explain", json={"table": "nonexistent", "metric": "row_count", "ts": _ts()})
+    with (
+        patch("app.api.get_cached_explanation", return_value=None),
+        patch("app.api.get_latest_metric", return_value=None),
+        patch("app.api.get_anomaly_scores", return_value=[]),
+    ):
+        resp = client.post(
+            "/api/explain", json={"table": "nonexistent", "metric": "row_count", "ts": _ts()}
+        )
     assert resp.status_code == 404
 
 
@@ -267,13 +302,17 @@ def test_explain_endpoint_missing_fields(client):
 
 
 def test_explain_endpoint_invalid_metric(client):
-    resp = client.post("/api/explain", json={"table": "orders", "metric": "size_bytes", "ts": _ts()})
+    resp = client.post(
+        "/api/explain", json={"table": "orders", "metric": "size_bytes", "ts": _ts()}
+    )
     assert resp.status_code == 400
 
 
 def test_explain_endpoint_serves_from_cache(client):
     cached = {"explanation": "кэш", "suggested_fix": "кэш fix", "confidence": 0.6}
     with patch("app.api.get_cached_explanation", return_value=cached):
-        resp = client.post("/api/explain", json={"table": "orders", "metric": "row_count", "ts": _ts()})
+        resp = client.post(
+            "/api/explain", json={"table": "orders", "metric": "row_count", "ts": _ts()}
+        )
     assert resp.status_code == 200
     assert resp.get_json()["explanation"] == "кэш"

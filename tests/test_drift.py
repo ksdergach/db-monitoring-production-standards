@@ -18,6 +18,7 @@ from ml.drift import (
 # PSI
 # ---------------------------------------------------------------------------
 
+
 def test_psi_zero_for_identical_distributions():
     p = {"a": 0.5, "b": 0.3, "c": 0.2}
     assert psi(p, p) < 1e-9
@@ -47,6 +48,7 @@ def test_psi_handles_new_categories_via_smoothing():
 # KS
 # ---------------------------------------------------------------------------
 
+
 def test_ks_zero_distance_for_identical_samples():
     pairs = [(1.0, 100), (2.0, 200), (3.0, 50)]
     d, p = ks_two_sample(pairs, pairs)
@@ -71,13 +73,16 @@ def test_ks_empty_inputs_return_no_evidence():
 # compute_drift integration (via the real metrics SQLite engine)
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def clean_metrics(tmp_path, monkeypatch):
     # Settings is loaded once at import; patch the live value instead of the
     # env var so a fresh sqlite file backs each test.
     from app.config import settings
-    monkeypatch.setattr(settings, "MONITOR_DB_URL", f"sqlite:///{tmp_path/'m.db'}")
+
+    monkeypatch.setattr(settings, "MONITOR_DB_URL", f"sqlite:///{tmp_path / 'm.db'}")
     import app.metrics_storage as ms
+
     monkeypatch.setattr(ms, "_engine", None)
     monkeypatch.setattr(ms, "_initialized", False)
     yield
@@ -98,10 +103,20 @@ def _seed(table: str, column: str, dtype: str, ts: datetime, buckets: list[dict]
 
 def test_compute_drift_flags_shifted_column(clean_metrics):
     now = datetime.now(UTC)
-    _seed("orders", "source", "varchar", now - timedelta(days=5),
-          [{"value": "ads", "count": 700}, {"value": "organic", "count": 300}])
-    _seed("orders", "source", "varchar", now,
-          [{"value": "ads", "count": 200}, {"value": "organic", "count": 800}])
+    _seed(
+        "orders",
+        "source",
+        "varchar",
+        now - timedelta(days=5),
+        [{"value": "ads", "count": 700}, {"value": "organic", "count": 300}],
+    )
+    _seed(
+        "orders",
+        "source",
+        "varchar",
+        now,
+        [{"value": "ads", "count": 200}, {"value": "organic", "count": 800}],
+    )
     report = compute_drift("orders")
     assert len(report) == 1
     row = report[0]
@@ -127,10 +142,20 @@ def test_compute_and_store_drift_all_writes_cache(clean_metrics, monkeypatch):
     from ml.drift import compute_and_store_drift_all
 
     now = datetime.now(UTC)
-    _seed("orders", "source", "varchar", now - timedelta(days=5),
-          [{"value": "ads", "count": 700}, {"value": "organic", "count": 300}])
-    _seed("orders", "source", "varchar", now,
-          [{"value": "ads", "count": 200}, {"value": "organic", "count": 800}])
+    _seed(
+        "orders",
+        "source",
+        "varchar",
+        now - timedelta(days=5),
+        [{"value": "ads", "count": 700}, {"value": "organic", "count": 300}],
+    )
+    _seed(
+        "orders",
+        "source",
+        "varchar",
+        now,
+        [{"value": "ads", "count": 200}, {"value": "organic", "count": 800}],
+    )
 
     monkeypatch.setattr(
         "app.db.list_tables",
@@ -152,10 +177,19 @@ def test_compute_and_store_drift_all_empty_table_clears_cache(clean_metrics, mon
     from app.metrics_storage import get_drift_report, save_drift_reports
     from ml.drift import compute_and_store_drift_all
 
-    save_drift_reports("orders", [{
-        "column": "source", "data_type": "varchar", "psi": 0.5,
-        "ks_pvalue": None, "is_drift": True, "severity": "critical",
-    }])
+    save_drift_reports(
+        "orders",
+        [
+            {
+                "column": "source",
+                "data_type": "varchar",
+                "psi": 0.5,
+                "ks_pvalue": None,
+                "is_drift": True,
+                "severity": "critical",
+            }
+        ],
+    )
     assert len(get_drift_report("orders")) == 1
 
     monkeypatch.setattr(
@@ -168,8 +202,7 @@ def test_compute_and_store_drift_all_empty_table_clears_cache(clean_metrics, mon
 
 def test_compute_drift_marks_insufficient_data(clean_metrics):
     now = datetime.now(UTC)
-    _seed("orders", "source", "varchar", now,
-          [{"value": "ads", "count": 100}])
+    _seed("orders", "source", "varchar", now, [{"value": "ads", "count": 100}])
     report = compute_drift("orders")
     assert report[0]["severity"] == "insufficient_data"
     assert report[0]["is_drift"] is False
@@ -179,6 +212,7 @@ def test_compute_drift_marks_insufficient_data(clean_metrics):
 # /api/drift/<table>
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def client():
     app = create_app({"TESTING": True})
@@ -187,8 +221,16 @@ def client():
 
 
 def test_drift_endpoint_returns_payload(client):
-    payload = [{"column": "source", "data_type": "varchar", "psi": 0.3,
-                "ks_pvalue": None, "is_drift": True, "severity": "critical"}]
+    payload = [
+        {
+            "column": "source",
+            "data_type": "varchar",
+            "psi": 0.3,
+            "ks_pvalue": None,
+            "is_drift": True,
+            "severity": "critical",
+        }
+    ]
     # Эндпоинт читает уже посчитанный кеш — патчим storage, а не compute_drift.
     with patch("app.metrics_storage.get_drift_report", return_value=payload):
         resp = client.get("/api/drift/orders")
@@ -205,4 +247,5 @@ def test_drift_endpoint_empty_when_no_snapshots(client):
 
 def math_isfinite(x: float) -> bool:
     import math
+
     return math.isfinite(x)

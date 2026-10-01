@@ -56,13 +56,15 @@ def default_app_iceberg_dsn() -> str:
 
 
 def _iceberg_dsn(rest_host: str, minio_endpoint: str) -> str:
-    params = urlencode({
-        "warehouse": WAREHOUSE,
-        "s3.endpoint": minio_endpoint,
-        "s3.access-key-id": MINIO_USER,
-        "s3.secret-access-key": MINIO_PASSWORD,
-        "s3.path-style-access": "true",
-    })
+    params = urlencode(
+        {
+            "warehouse": WAREHOUSE,
+            "s3.endpoint": minio_endpoint,
+            "s3.access-key-id": MINIO_USER,
+            "s3.secret-access-key": MINIO_PASSWORD,
+            "s3.path-style-access": "true",
+        }
+    )
     return f"iceberg+rest://{rest_host}?{params}"
 
 
@@ -164,6 +166,7 @@ def _table_specs() -> list[DemoTable]:
 
 # ── Data generators ────────────────────────────────────────────────────────
 
+
 def _gen_customers(n: int, rng) -> object:
     import pyarrow as pa
 
@@ -174,22 +177,24 @@ def _gen_customers(n: int, rng) -> object:
     null_ltv = rng.random(n) < 0.01
     null_country = rng.random(n) < 0.03
     ltv = rng.uniform(50, 5000, n)
-    return pa.table({
-        "customer_id": pa.array([f"cus-{i:06d}" for i in range(n)]),
-        "email": pa.array(
-            [f"user{i}@example.com" if not null_email[i] else None for i in range(n)]
-        ),
-        "segment": pa.array(
-            [segments[i % len(segments)] if not null_seg[i] else None for i in range(n)]
-        ),
-        "lifetime_value": pa.array(
-            [float(ltv[i]) if not null_ltv[i] else None for i in range(n)],
-            type=pa.float64(),
-        ),
-        "country": pa.array(
-            [countries[i % len(countries)] if not null_country[i] else None for i in range(n)]
-        ),
-    })
+    return pa.table(
+        {
+            "customer_id": pa.array([f"cus-{i:06d}" for i in range(n)]),
+            "email": pa.array(
+                [f"user{i}@example.com" if not null_email[i] else None for i in range(n)]
+            ),
+            "segment": pa.array(
+                [segments[i % len(segments)] if not null_seg[i] else None for i in range(n)]
+            ),
+            "lifetime_value": pa.array(
+                [float(ltv[i]) if not null_ltv[i] else None for i in range(n)],
+                type=pa.float64(),
+            ),
+            "country": pa.array(
+                [countries[i % len(countries)] if not null_country[i] else None for i in range(n)]
+            ),
+        }
+    )
 
 
 def _gen_products(n: int, rng) -> object:
@@ -202,21 +207,23 @@ def _gen_products(n: int, rng) -> object:
     null_stock = rng.random(n) < 0.02
     prices = rng.uniform(1, 999, n)
     stocks = rng.integers(0, 10000, n)
-    return pa.table({
-        "product_id": pa.array([f"prd-{i:05d}" for i in range(n)]),
-        "name": pa.array([f"{names[i % len(names)]}-{i:04d}" for i in range(n)]),
-        "category": pa.array(
-            [categories[i % len(categories)] if not null_cat[i] else None for i in range(n)]
-        ),
-        "price": pa.array(
-            [round(float(prices[i]), 2) if not null_price[i] else None for i in range(n)],
-            type=pa.float64(),
-        ),
-        "stock_qty": pa.array(
-            [int(stocks[i]) if not null_stock[i] else None for i in range(n)],
-            type=pa.int32(),
-        ),
-    })
+    return pa.table(
+        {
+            "product_id": pa.array([f"prd-{i:05d}" for i in range(n)]),
+            "name": pa.array([f"{names[i % len(names)]}-{i:04d}" for i in range(n)]),
+            "category": pa.array(
+                [categories[i % len(categories)] if not null_cat[i] else None for i in range(n)]
+            ),
+            "price": pa.array(
+                [round(float(prices[i]), 2) if not null_price[i] else None for i in range(n)],
+                type=pa.float64(),
+            ),
+            "stock_qty": pa.array(
+                [int(stocks[i]) if not null_stock[i] else None for i in range(n)],
+                type=pa.int32(),
+            ),
+        }
+    )
 
 
 def _gen_orders(n: int, rng) -> object:
@@ -226,17 +233,19 @@ def _gen_orders(n: int, rng) -> object:
     null_status = rng.random(n) < 0.02
     null_amount = rng.random(n) < 0.01
     amounts = rng.uniform(10, 2000, n)
-    return pa.table({
-        "order_id": pa.array([f"ord-{i:07d}" for i in range(n)]),
-        "customer_id": pa.array([f"cus-{(i % 50_000):06d}" for i in range(n)]),
-        "status": pa.array(
-            [statuses[i % len(statuses)] if not null_status[i] else None for i in range(n)]
-        ),
-        "amount": pa.array(
-            [round(float(amounts[i]), 2) if not null_amount[i] else None for i in range(n)],
-            type=pa.float64(),
-        ),
-    })
+    return pa.table(
+        {
+            "order_id": pa.array([f"ord-{i:07d}" for i in range(n)]),
+            "customer_id": pa.array([f"cus-{(i % 50_000):06d}" for i in range(n)]),
+            "status": pa.array(
+                [statuses[i % len(statuses)] if not null_status[i] else None for i in range(n)]
+            ),
+            "amount": pa.array(
+                [round(float(amounts[i]), 2) if not null_amount[i] else None for i in range(n)],
+                type=pa.float64(),
+            ),
+        }
+    )
 
 
 def _gen_order_items(n: int, rng) -> object:
@@ -245,16 +254,18 @@ def _gen_order_items(n: int, rng) -> object:
     null_price = rng.random(n) < 0.005
     prices = rng.uniform(1, 500, n)
     qtys = rng.integers(1, 10, n)
-    return pa.table({
-        "item_id": pa.array([f"itm-{i:08d}" for i in range(n)]),
-        "order_id": pa.array([f"ord-{(i // 3):07d}" for i in range(n)]),
-        "product_id": pa.array([f"prd-{(i % 5_000):05d}" for i in range(n)]),
-        "quantity": pa.array(qtys.tolist(), type=pa.int32()),
-        "unit_price": pa.array(
-            [round(float(prices[i]), 2) if not null_price[i] else None for i in range(n)],
-            type=pa.float64(),
-        ),
-    })
+    return pa.table(
+        {
+            "item_id": pa.array([f"itm-{i:08d}" for i in range(n)]),
+            "order_id": pa.array([f"ord-{(i // 3):07d}" for i in range(n)]),
+            "product_id": pa.array([f"prd-{(i % 5_000):05d}" for i in range(n)]),
+            "quantity": pa.array(qtys.tolist(), type=pa.int32()),
+            "unit_price": pa.array(
+                [round(float(prices[i]), 2) if not null_price[i] else None for i in range(n)],
+                type=pa.float64(),
+            ),
+        }
+    )
 
 
 def _gen_events(n: int, rng) -> object:
@@ -265,21 +276,27 @@ def _gen_events(n: int, rng) -> object:
     null_ip = rng.random(n) < 0.11
     null_value = rng.random(n) < 0.03
     values = rng.uniform(0, 500, n)
-    return pa.table({
-        "event_id": pa.array([f"evt-{i:08d}" for i in range(n)]),
-        "device_id": pa.array(
-            [f"dev-{i % 10000:05d}" if not null_device[i] else None for i in range(n)]
-        ),
-        "ip_address": pa.array(
-            [f"10.{i % 256}.{(i // 256) % 256}.{(i // 65536) % 256}"
-             if not null_ip[i] else None for i in range(n)]
-        ),
-        "event_type": pa.array([event_types[i % len(event_types)] for i in range(n)]),
-        "value": pa.array(
-            [round(float(values[i]), 2) if not null_value[i] else None for i in range(n)],
-            type=pa.float64(),
-        ),
-    })
+    return pa.table(
+        {
+            "event_id": pa.array([f"evt-{i:08d}" for i in range(n)]),
+            "device_id": pa.array(
+                [f"dev-{i % 10000:05d}" if not null_device[i] else None for i in range(n)]
+            ),
+            "ip_address": pa.array(
+                [
+                    f"10.{i % 256}.{(i // 256) % 256}.{(i // 65536) % 256}"
+                    if not null_ip[i]
+                    else None
+                    for i in range(n)
+                ]
+            ),
+            "event_type": pa.array([event_types[i % len(event_types)] for i in range(n)]),
+            "value": pa.array(
+                [round(float(values[i]), 2) if not null_value[i] else None for i in range(n)],
+                type=pa.float64(),
+            ),
+        }
+    )
 
 
 def _gen_sessions(n: int, rng) -> object:
@@ -292,22 +309,24 @@ def _gen_sessions(n: int, rng) -> object:
     null_utm = rng.random(n) < 0.08
     null_dur = rng.random(n) < 0.02
     durations = rng.integers(5, 1800, n)
-    return pa.table({
-        "session_id": pa.array([f"ses-{i:07d}" for i in range(n)]),
-        "user_id": pa.array(
-            [f"usr-{i % 50_000:06d}" if not null_user[i] else None for i in range(n)]
-        ),
-        "source": pa.array(
-            [sources[i % len(sources)] if not null_source[i] else None for i in range(n)]
-        ),
-        "utm_source": pa.array(
-            [utm_sources[i % len(utm_sources)] if not null_utm[i] else None for i in range(n)]
-        ),
-        "duration_sec": pa.array(
-            [int(durations[i]) if not null_dur[i] else None for i in range(n)],
-            type=pa.int32(),
-        ),
-    })
+    return pa.table(
+        {
+            "session_id": pa.array([f"ses-{i:07d}" for i in range(n)]),
+            "user_id": pa.array(
+                [f"usr-{i % 50_000:06d}" if not null_user[i] else None for i in range(n)]
+            ),
+            "source": pa.array(
+                [sources[i % len(sources)] if not null_source[i] else None for i in range(n)]
+            ),
+            "utm_source": pa.array(
+                [utm_sources[i % len(utm_sources)] if not null_utm[i] else None for i in range(n)]
+            ),
+            "duration_sec": pa.array(
+                [int(durations[i]) if not null_dur[i] else None for i in range(n)],
+                type=pa.int32(),
+            ),
+        }
+    )
 
 
 _GENERATORS = {
@@ -330,6 +349,7 @@ def _generate_rows(spec: DemoTable) -> object:
 
 
 # ── Catalog helpers ────────────────────────────────────────────────────────
+
 
 def _catalog():
     from pyiceberg.catalog.rest import RestCatalog
@@ -515,7 +535,10 @@ def _repair_iceberg_connection(
 
 def _purge_project_history(project_id: str, table_names: list[str]) -> int:
     scoped_tables = (
-        "metrics", "notifications", "anomaly_scores", "changepoints",
+        "metrics",
+        "notifications",
+        "anomaly_scores",
+        "changepoints",
         "drift_reports",
     )
     deleted = 0
@@ -548,12 +571,12 @@ def _row_count(spec: DemoTable, progress: float) -> int:
     # row_count so the final value equals spec.row_count exactly.
     base = spec.row_count * (0.58 + 0.28 * progress)
     steps = {
-        "customers":   ((0.50, 2_000), (0.73, 2_500), (0.96, 2_500)),
-        "products":    ((0.60,   700),),
-        "orders":      ((0.54, 8_000), (0.76, 10_000), (0.97, 10_000)),
+        "customers": ((0.50, 2_000), (0.73, 2_500), (0.96, 2_500)),
+        "products": ((0.60, 700),),
+        "orders": ((0.54, 8_000), (0.76, 10_000), (0.97, 10_000)),
         "order_items": ((0.55, 28_000), (0.77, 28_000), (0.98, 28_000)),
-        "events":      ((0.52, 20_000), (0.75, 25_000), (0.97, 25_000)),
-        "sessions":    ((0.53, 7_000), (0.76, 7_000), (0.98, 7_000)),
+        "events": ((0.52, 20_000), (0.75, 25_000), (0.97, 25_000)),
+        "sessions": ((0.53, 7_000), (0.76, 7_000), (0.98, 7_000)),
     }.get(spec.name, ())
     base += sum(value for point, value in steps if progress >= point)
     return min(spec.row_count, max(0, round(base)))
@@ -595,13 +618,15 @@ def _distribution_rows(spec: DemoTable, days: int, end: datetime) -> list[dict]:
                     target = (0.12, 0.16, 0.20, 0.22, 0.30)[i]
                     weight = baseline + (target - baseline) * drift
                     buckets.append({"value": label, "count": round(weight * 1000)})
-                rows.append({
-                    "ts": ts,
-                    "table_name": spec.name,
-                    "metric_name": "column_distribution",
-                    "value": float(sum(b["count"] for b in buckets)),
-                    "tags": {"column": col.name, "data_type": "string", "buckets": buckets},
-                })
+                rows.append(
+                    {
+                        "ts": ts,
+                        "table_name": spec.name,
+                        "metric_name": "column_distribution",
+                        "value": float(sum(b["count"] for b in buckets)),
+                        "tags": {"column": col.name, "data_type": "string", "buckets": buckets},
+                    }
+                )
 
             # customers.segment: retail → vip/wholesale shift
             elif spec.name == "customers" and col.name == "segment":
@@ -612,13 +637,15 @@ def _distribution_rows(spec: DemoTable, days: int, end: datetime) -> list[dict]:
                     target = (0.35, 0.35, 0.20, 0.10)[i]
                     weight = baseline + (target - baseline) * drift
                     buckets.append({"value": label, "count": round(weight * 1000)})
-                rows.append({
-                    "ts": ts,
-                    "table_name": spec.name,
-                    "metric_name": "column_distribution",
-                    "value": float(sum(b["count"] for b in buckets)),
-                    "tags": {"column": col.name, "data_type": "string", "buckets": buckets},
-                })
+                rows.append(
+                    {
+                        "ts": ts,
+                        "table_name": spec.name,
+                        "metric_name": "column_distribution",
+                        "value": float(sum(b["count"] for b in buckets)),
+                        "tags": {"column": col.name, "data_type": "string", "buckets": buckets},
+                    }
+                )
 
     return rows
 
@@ -662,41 +689,47 @@ def _metric_rows(spec: DemoTable, timestamps: list[datetime]) -> list[dict]:
     for i, ts in enumerate(timestamps):
         progress = i / (len(timestamps) - 1) if len(timestamps) > 1 else 1.0
         rc = _row_count(spec, progress)
-        rows.extend([
-            {"ts": ts, "table_name": spec.name, "metric_name": "row_count", "value": rc},
-            {
-                "ts": ts,
-                "table_name": spec.name,
-                "metric_name": "size_bytes",
-                "value": int(rc * avg_row_size),
-            },
-            {
-                "ts": ts,
-                "table_name": spec.name,
-                "metric_name": "last_modified",
-                "value": ts.timestamp(),
-            },
-        ])
+        rows.extend(
+            [
+                {"ts": ts, "table_name": spec.name, "metric_name": "row_count", "value": rc},
+                {
+                    "ts": ts,
+                    "table_name": spec.name,
+                    "metric_name": "size_bytes",
+                    "value": int(rc * avg_row_size),
+                },
+                {
+                    "ts": ts,
+                    "table_name": spec.name,
+                    "metric_name": "last_modified",
+                    "value": ts.timestamp(),
+                },
+            ]
+        )
         rates: list[float] = []
         for col in spec.columns:
             if not col.nullable:
                 continue
             rate = _null_rate(spec, col, progress, i)
             rates.append(rate)
-            rows.append({
-                "ts": ts,
-                "table_name": spec.name,
-                "metric_name": "null_count",
-                "value": round(rc * rate),
-                "tags": {"column": col.name},
-            })
+            rows.append(
+                {
+                    "ts": ts,
+                    "table_name": spec.name,
+                    "metric_name": "null_count",
+                    "value": round(rc * rate),
+                    "tags": {"column": col.name},
+                }
+            )
         if rates:
-            rows.append({
-                "ts": ts,
-                "table_name": spec.name,
-                "metric_name": "null_rate",
-                "value": round(sum(rates) / len(rates), 4),
-            })
+            rows.append(
+                {
+                    "ts": ts,
+                    "table_name": spec.name,
+                    "metric_name": "null_rate",
+                    "value": round(sum(rates) / len(rates), 4),
+                }
+            )
     return rows
 
 

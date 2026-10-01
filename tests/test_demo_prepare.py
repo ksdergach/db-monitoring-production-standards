@@ -21,6 +21,7 @@ from scripts import demo_prepare
 @pytest.fixture(autouse=True)
 def _fernet_key(monkeypatch):
     from cryptography.fernet import Fernet
+
     monkeypatch.setenv("FERNET_KEY", Fernet.generate_key().decode())
     crypto.reset_for_tests()
 
@@ -45,6 +46,7 @@ def storage(tmp_path, monkeypatch):
     # The actual writers live in ml.forecast and ml.anomaly_detector.
     import ml.anomaly_detector as anomaly_mod
     import ml.forecast as forecast_mod
+
     monkeypatch.setattr(forecast_mod, "MODELS_DIR", models_dir)
     monkeypatch.setattr(anomaly_mod, "MODELS_DIR", models_dir)
 
@@ -54,10 +56,15 @@ def storage(tmp_path, monkeypatch):
 def _make_project(slug: str = "retail-postgres") -> str:
     uid = uuid.uuid4().hex
     metrics_storage.create_user(
-        user_id=uid, email=f"u-{uid[:6]}@x.io", password_hash="x",
+        user_id=uid,
+        email=f"u-{uid[:6]}@x.io",
+        password_hash="x",
     )
     project = metrics_storage.create_project(
-        project_id=uuid.uuid4().hex, user_id=uid, name="P", slug=slug,
+        project_id=uuid.uuid4().hex,
+        user_id=uid,
+        name="P",
+        slug=slug,
     )
     return project["id"]
 
@@ -101,12 +108,17 @@ def test_verify_project_counts_metrics_and_models(storage, tmp_path):
     pid = _make_project()
 
     # Insert one metric row directly through the storage API.
-    metrics_storage.save_metrics([{
-        "ts": datetime.now(UTC),
-        "table_name": "users",
-        "metric_name": "row_count",
-        "value": 100.0,
-    }], pid)
+    metrics_storage.save_metrics(
+        [
+            {
+                "ts": datetime.now(UTC),
+                "table_name": "users",
+                "metric_name": "row_count",
+                "value": 100.0,
+            }
+        ],
+        pid,
+    )
 
     # Touch a fake forecast model file matching the naming convention
     # used by ml/forecast.py::_model_path.
@@ -126,10 +138,17 @@ def test_verify_project_isolated_across_tenants(storage):
 
     pid_a = _make_project("retail-postgres")
     pid_b = _make_project("other-project")
-    metrics_storage.save_metrics([{
-        "ts": datetime.now(UTC), "table_name": "users",
-        "metric_name": "row_count", "value": 1.0,
-    }], pid_a)
+    metrics_storage.save_metrics(
+        [
+            {
+                "ts": datetime.now(UTC),
+                "table_name": "users",
+                "metric_name": "row_count",
+                "value": 1.0,
+            }
+        ],
+        pid_a,
+    )
     assert demo_prepare.verify_project(pid_a)["metrics"] == 1
     assert demo_prepare.verify_project(pid_b)["metrics"] == 0
 
@@ -152,6 +171,7 @@ def test_prepare_one_calls_seed_then_warmup(storage, monkeypatch):
         return {"forecasts": {}, "anomalies": {}, "changepoints": {}, "drift": {}}
 
     from scripts import seed_metrics_db, warmup_ml
+
     monkeypatch.setattr(seed_metrics_db, "main", fake_seed)
     monkeypatch.setattr(warmup_ml, "main", fake_warmup)
 

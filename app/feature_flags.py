@@ -67,29 +67,31 @@ def require_flag(flag_name: str):
     the worker flips the route within seconds. No code change, no
     redeploy required for emergency feature shutdown.
     """
+
     def decorator(view):
         @wraps(view)
         def wrapper(*args, **kwargs):
             if not is_enabled(flag_name):
                 logger.info(
                     "feature-flag '%s' is off; serving 404 for view=%s",
-                    flag_name, view.__name__,
+                    flag_name,
+                    view.__name__,
                 )
                 abort(404)
             return view(*args, **kwargs)
+
         # Surface the flag name on the wrapper so the /admin/feature-flags
         # listing can show which routes are gated by which flag.
         wrapper._feature_flag = flag_name  # type: ignore[attr-defined]
         return wrapper
+
     return decorator
 
 
 # Registry of flags we want shown on the admin page. Adding a flag here
 # is purely cosmetic — ``is_enabled`` works with any name — but the
 # admin UI needs *something* to enumerate. Keep alphabetically sorted.
-KNOWN_FLAGS: tuple[str, ...] = (
-    "forecast",
-)
+KNOWN_FLAGS: tuple[str, ...] = ("forecast",)
 
 
 def snapshot() -> list[dict]:

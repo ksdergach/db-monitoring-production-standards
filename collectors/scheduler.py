@@ -115,6 +115,7 @@ def collect_all_tables() -> None:
     # Schema-drift sweep runs in the same tick — same target-DB connection
     # already warm, and schema reads are cheap (information_schema).
     from collectors.schema_collector import collect_all_schemas
+
     counts = collect_all_schemas()
     logger.info("Schema sweep finished: %s", counts)
 
@@ -125,6 +126,7 @@ def collect_all_tables() -> None:
     # Distribution-drift кеш обновляется здесь же — тик уже прогрел
     # column_distribution, расчёт быстрый (всё внутри monitor.db).
     from ml.drift import compute_and_store_drift_all
+
     drift_counts = compute_and_store_drift_all()
     logger.info("Drift cache refreshed: %s", drift_counts)
 
@@ -172,6 +174,7 @@ def _iter_notification_projects() -> list[str]:
     load_project_telegram_config returning None).
     """
     from app.metrics_storage import list_project_ids_with_telegram
+
     project_ids = list_project_ids_with_telegram()
     if "legacy" not in project_ids:
         project_ids = ["legacy", *project_ids]
@@ -193,6 +196,7 @@ def _notify_schema_drift_events() -> None:
         tables = list_metric_tables(project_id) or (None if project_id == "legacy" else [])
         if tables is None:
             from app.db import list_tables
+
             tables = [t["table_name"] for t in list_tables()]
 
         bot_token, chat_id, throttle = cfg
@@ -201,14 +205,19 @@ def _notify_schema_drift_events() -> None:
                 events = get_schema_events(name, project_id=project_id, window=window)
                 if events:
                     notify_schema_drift(
-                        project_id, name, events,
-                        bot_token=bot_token, chat_id=chat_id,
+                        project_id,
+                        name,
+                        events,
+                        bot_token=bot_token,
+                        chat_id=chat_id,
                         throttle_minutes=throttle,
                     )
             except Exception as exc:
                 logger.warning(
                     "[project=%s] schema drift notification failed for %s: %s",
-                    project_id, name, exc,
+                    project_id,
+                    name,
+                    exc,
                 )
 
 
@@ -235,8 +244,12 @@ def _score_recent_anomalies() -> None:
                     latest = max(anomalies, key=lambda s: s["ts"])
                     try:
                         notify_anomaly(
-                            "legacy", name, latest["ts"], latest["score"],
-                            bot_token=bot_token, chat_id=chat_id,
+                            "legacy",
+                            name,
+                            latest["ts"],
+                            latest["score"],
+                            bot_token=bot_token,
+                            chat_id=chat_id,
                             throttle_minutes=throttle,
                         )
                     except Exception as exc:
@@ -251,6 +264,7 @@ def _iter_retrain_projects() -> list[str]:
     """Project ids that need ML retraining: any project with metric rows
     plus ``'legacy'`` for back-compat with single-tenant setups."""
     from app.metrics_storage import list_project_ids_with_metrics
+
     ids = list_project_ids_with_metrics()
     if "legacy" not in ids:
         ids = ["legacy", *ids]
@@ -293,7 +307,10 @@ def detect_changepoints() -> None:
         total_detected += counts.get("detected", 0)
         logger.debug(
             "[project=%s] changepoints: detected=%d tables=%d errors=%d",
-            project_id, counts["detected"], counts["tables"], counts["errors"],
+            project_id,
+            counts["detected"],
+            counts["tables"],
+            counts["errors"],
         )
 
         cfg = load_project_telegram_config(project_id)
@@ -309,16 +326,23 @@ def detect_changepoints() -> None:
                     event["value_before"],
                     event["value_after"],
                     event["ts"],
-                    bot_token=bot_token, chat_id=chat_id,
+                    bot_token=bot_token,
+                    chat_id=chat_id,
                     throttle_minutes=throttle,
                 )
             except Exception as exc:
                 logger.warning(
-                    "[project=%s] changepoint notification failed: %s", project_id, exc,
+                    "[project=%s] changepoint notification failed: %s",
+                    project_id,
+                    exc,
                 )
 
-    logger.info("Job %s finished: total detected=%d across %d projects",
-                CHANGEPOINT_JOB_ID, total_detected, len(project_ids))
+    logger.info(
+        "Job %s finished: total detected=%d across %d projects",
+        CHANGEPOINT_JOB_ID,
+        total_detected,
+        len(project_ids),
+    )
 
 
 def retrain_anomaly_detectors() -> None:
@@ -345,6 +369,7 @@ def retrain_anomaly_detectors() -> None:
         if project_id == "legacy" and not tables:
             try:
                 from app.db import list_tables as _legacy_list_tables
+
                 score_targets = [t["table_name"] for t in _legacy_list_tables()]
             except Exception as exc:
                 # Multi-tenant deploys often have no global DATABASE_URL —
@@ -367,7 +392,9 @@ def retrain_anomaly_detectors() -> None:
             except Exception as exc:
                 logger.warning(
                     "[project=%s] post-retrain scoring failed for %s: %s",
-                    project_id, name, exc,
+                    project_id,
+                    name,
+                    exc,
                 )
     logger.info("Anomaly models retrained: %s", total_counts)
     logger.info("Job %s finished: %d scores saved", ANOMALY_JOB_ID, scored)
@@ -385,5 +412,6 @@ def purge_failed_logins() -> None:
     from app.metrics_storage import purge_old_failed_logins
 
     deleted = purge_old_failed_logins(retention=timedelta(days=30))
-    logger.info("Job %s finished: %d failed_login_attempts purged",
-                PURGE_FAILED_LOGINS_JOB_ID, deleted)
+    logger.info(
+        "Job %s finished: %d failed_login_attempts purged", PURGE_FAILED_LOGINS_JOB_ID, deleted
+    )

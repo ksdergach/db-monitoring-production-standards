@@ -140,7 +140,9 @@ def _get_demo_project_and_connection() -> tuple[str, str]:
 
 
 def _repair_clickhouse_connection(
-    project_id: str, connection_id: str, *,
+    project_id: str,
+    connection_id: str,
+    *,
     interval_minutes: int = 15,
 ) -> None:
     """Re-encrypt the DSN with the current Fernet key if it changed since
@@ -188,8 +190,7 @@ def _repair_clickhouse_connection(
 def _purge_project_history(project_id: str, table_names: list[str]) -> int:
     """Clean slate before backfill so repeated runs of demo prep don't
     layer history on top of history."""
-    scoped = ("metrics", "notifications", "anomaly_scores",
-              "changepoints", "drift_reports")
+    scoped = ("metrics", "notifications", "anomaly_scores", "changepoints", "drift_reports")
     deleted = 0
     with get_monitor_engine().begin() as conn:
         for tbl in scoped:
@@ -220,10 +221,10 @@ def _row_count(spec: DemoTable, progress: float) -> int:
     выглядели одинаково красиво в обоих проектах."""
     base = spec.row_count * (0.60 + 0.40 * progress)
     bumps = {
-        "events":   ((0.55, 600), (0.78, 750), (0.97, 900)),
-        "orders":   ((0.54, 300), (0.76, 400), (0.96, 500)),
-        "users":    ((0.50, 80),  (0.73, 110), (0.96, 130)),
-        "products": ((0.55, 4),   (0.78, 6),   (0.97, 8)),
+        "events": ((0.55, 600), (0.78, 750), (0.97, 900)),
+        "orders": ((0.54, 300), (0.76, 400), (0.96, 500)),
+        "users": ((0.50, 80), (0.73, 110), (0.96, 130)),
+        "products": ((0.55, 4), (0.78, 6), (0.97, 8)),
     }.get(spec.name, ())
     base += sum(v for point, v in bumps if progress >= point)
     return min(spec.row_count, max(0, round(base)))
@@ -258,17 +259,19 @@ def _distribution_rows(spec: DemoTable, days: int, end: datetime) -> list[dict]:
         for label, b, t in zip(labels, baseline, target, strict=False):
             weight = b + (t - b) * progress
             buckets.append({"value": label, "count": round(weight * 1000)})
-        rows.append({
-            "ts": ts,
-            "table_name": spec.name,
-            "metric_name": "column_distribution",
-            "value": float(sum(b["count"] for b in buckets)),
-            "tags": {
-                "column": cat_col.name,
-                "data_type": "string",
-                "buckets": buckets,
-            },
-        })
+        rows.append(
+            {
+                "ts": ts,
+                "table_name": spec.name,
+                "metric_name": "column_distribution",
+                "value": float(sum(b["count"] for b in buckets)),
+                "tags": {
+                    "column": cat_col.name,
+                    "data_type": "string",
+                    "buckets": buckets,
+                },
+            }
+        )
     return rows
 
 
@@ -278,34 +281,47 @@ def _metric_rows(spec: DemoTable, timestamps: list[datetime]) -> list[dict]:
     for i, ts in enumerate(timestamps):
         progress = i / (len(timestamps) - 1) if len(timestamps) > 1 else 1.0
         rc = _row_count(spec, progress)
-        rows.extend([
-            {"ts": ts, "table_name": spec.name,
-             "metric_name": "row_count", "value": rc},
-            {"ts": ts, "table_name": spec.name,
-             "metric_name": "size_bytes", "value": int(rc * avg_row_size)},
-            {"ts": ts, "table_name": spec.name,
-             "metric_name": "last_modified", "value": ts.timestamp()},
-        ])
+        rows.extend(
+            [
+                {"ts": ts, "table_name": spec.name, "metric_name": "row_count", "value": rc},
+                {
+                    "ts": ts,
+                    "table_name": spec.name,
+                    "metric_name": "size_bytes",
+                    "value": int(rc * avg_row_size),
+                },
+                {
+                    "ts": ts,
+                    "table_name": spec.name,
+                    "metric_name": "last_modified",
+                    "value": ts.timestamp(),
+                },
+            ]
+        )
         rates: list[float] = []
         for col in spec.columns:
             if not col.nullable:
                 continue
             rate = _null_rate(spec, col, progress, i)
             rates.append(rate)
-            rows.append({
-                "ts": ts,
-                "table_name": spec.name,
-                "metric_name": "null_count",
-                "value": round(rc * rate),
-                "tags": {"column": col.name},
-            })
+            rows.append(
+                {
+                    "ts": ts,
+                    "table_name": spec.name,
+                    "metric_name": "null_count",
+                    "value": round(rc * rate),
+                    "tags": {"column": col.name},
+                }
+            )
         if rates:
-            rows.append({
-                "ts": ts,
-                "table_name": spec.name,
-                "metric_name": "null_rate",
-                "value": round(sum(rates) / len(rates), 4),
-            })
+            rows.append(
+                {
+                    "ts": ts,
+                    "table_name": spec.name,
+                    "metric_name": "null_rate",
+                    "value": round(sum(rates) / len(rates), 4),
+                }
+            )
     return rows
 
 
@@ -319,10 +335,16 @@ def _schema_events(days: int) -> list[dict]:
             "change_type": "nullable_changed",
             "column_name": "device_type",
             "details": {
-                "before": {"name": "device_type", "type": "LowCardinality(String)",
-                            "nullable": False},
-                "after": {"name": "device_type", "type": "LowCardinality(String)",
-                            "nullable": True},
+                "before": {
+                    "name": "device_type",
+                    "type": "LowCardinality(String)",
+                    "nullable": False,
+                },
+                "after": {
+                    "name": "device_type",
+                    "type": "LowCardinality(String)",
+                    "nullable": True,
+                },
             },
         },
         {
@@ -331,15 +353,15 @@ def _schema_events(days: int) -> list[dict]:
             "change_type": "column_added",
             "column_name": "total_price",
             "details": {
-                "after": {"name": "total_price", "type": "Decimal(12, 2)",
-                            "nullable": True},
+                "after": {"name": "total_price", "type": "Decimal(12, 2)", "nullable": True},
             },
         },
     ]
 
 
 def seed_clickhouse_history(
-    project_id: str, *,
+    project_id: str,
+    *,
     days: int = 14,
     interval_minutes: int = 60,
     reset: bool = True,
@@ -430,11 +452,13 @@ def main() -> None:
     parser.add_argument("--days", type=int, default=14)
     parser.add_argument("--interval-minutes", type=int, default=60)
     parser.add_argument(
-        "--skip-warmup-ml", action="store_true",
+        "--skip-warmup-ml",
+        action="store_true",
         help="Only seed CH history; do not run ML warmup",
     )
     parser.add_argument(
-        "--skip-live-collect", action="store_true",
+        "--skip-live-collect",
+        action="store_true",
         help="Don't attempt live collector tick — useful if CH not running",
     )
     args = parser.parse_args()

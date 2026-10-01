@@ -101,8 +101,7 @@ def verify_project(project_id: str) -> dict:
     # см. ml/forecast.py::_model_path и ml/anomaly_detector.py::_model_path.
     safe = project_id.replace("/", "_").replace(" ", "_")
     forecast_models = (
-        sum(1 for _ in MODELS_DIR.glob(f"{safe}__*.joblib"))
-        if MODELS_DIR.exists() else 0
+        sum(1 for _ in MODELS_DIR.glob(f"{safe}__*.joblib")) if MODELS_DIR.exists() else 0
     )
     return {
         "metrics": metrics,
@@ -165,8 +164,10 @@ def main(
 
     # Summary table.
     print()
-    print(f"{'Project':<25} {'metrics':>9} {'anomaly':>9} {'cps':>5} "
-          f"{'drift':>6} {'notif':>6} {'models':>7}")
+    print(
+        f"{'Project':<25} {'metrics':>9} {'anomaly':>9} {'cps':>5} "
+        f"{'drift':>6} {'notif':>6} {'models':>7}"
+    )
     print("-" * 70)
     for slug, v in results.items():
         print(
@@ -180,13 +181,16 @@ def main(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument(
-        "--slug", action="append", dest="slugs",
+        "--slug",
+        action="append",
+        dest="slugs",
         help="Slug demo-проекта (по умолчанию: retail-postgres). Можно повторять.",
     )
     parser.add_argument("--days", type=int, default=14)
     parser.add_argument("--interval-minutes", type=int, default=60)
     parser.add_argument(
-        "--skip-workspace", action="store_true",
+        "--skip-workspace",
+        action="store_true",
         help="Пропустить seed_demo_workspace — если уверен, что user/project/conn уже есть.",
     )
     args = parser.parse_args()

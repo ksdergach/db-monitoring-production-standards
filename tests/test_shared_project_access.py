@@ -50,8 +50,10 @@ def _user(storage, email: str) -> str:
 def test_create_project_inserts_owner_membership(storage):
     user_id = _user(storage, "owner@example.com")
     project = storage.create_project(
-        project_id=uuid.uuid4().hex, user_id=user_id,
-        name="P", slug="my-project",
+        project_id=uuid.uuid4().hex,
+        user_id=user_id,
+        name="P",
+        slug="my-project",
     )
     assert storage.get_member_role(project["id"], user_id) == "owner"
 
@@ -59,8 +61,10 @@ def test_create_project_inserts_owner_membership(storage):
 def test_list_projects_for_user_includes_self_owned(storage):
     user_id = _user(storage, "owner@example.com")
     storage.create_project(
-        project_id=uuid.uuid4().hex, user_id=user_id,
-        name="P", slug="my-project",
+        project_id=uuid.uuid4().hex,
+        user_id=user_id,
+        name="P",
+        slug="my-project",
     )
     projects = storage.list_projects_for_user(user_id)
     assert len(projects) == 1
@@ -76,8 +80,10 @@ def test_add_member_makes_project_visible_to_target(storage):
     a_id = _user(storage, "a@example.com")
     b_id = _user(storage, "b@example.com")
     project = storage.create_project(
-        project_id=uuid.uuid4().hex, user_id=a_id,
-        name="Retail", slug="retail",
+        project_id=uuid.uuid4().hex,
+        user_id=a_id,
+        name="Retail",
+        slug="retail",
     )
     storage.add_project_member(project["id"], b_id, role="viewer")
 
@@ -92,8 +98,10 @@ def test_user_without_membership_does_not_see_project(storage):
     a_id = _user(storage, "a@example.com")
     c_id = _user(storage, "c@example.com")
     storage.create_project(
-        project_id=uuid.uuid4().hex, user_id=a_id,
-        name="Retail", slug="retail",
+        project_id=uuid.uuid4().hex,
+        user_id=a_id,
+        name="Retail",
+        slug="retail",
     )
 
     assert storage.list_projects_for_user(c_id) == []
@@ -106,8 +114,10 @@ def test_get_project_by_slug_finds_shared_project(storage):
     a_id = _user(storage, "a@example.com")
     b_id = _user(storage, "b@example.com")
     a_project = storage.create_project(
-        project_id=uuid.uuid4().hex, user_id=a_id,
-        name="Shared", slug="shared-slug",
+        project_id=uuid.uuid4().hex,
+        user_id=a_id,
+        name="Shared",
+        slug="shared-slug",
     )
     storage.add_project_member(a_project["id"], b_id, role="editor")
 
@@ -121,12 +131,16 @@ def test_get_project_by_slug_prefers_owned_when_collision(storage):
     a_id = _user(storage, "a@example.com")
     b_id = _user(storage, "b@example.com")
     a_project = storage.create_project(
-        project_id=uuid.uuid4().hex, user_id=a_id,
-        name="A's default", slug="default",
+        project_id=uuid.uuid4().hex,
+        user_id=a_id,
+        name="A's default",
+        slug="default",
     )
     b_project = storage.create_project(
-        project_id=uuid.uuid4().hex, user_id=b_id,
-        name="B's default", slug="default",
+        project_id=uuid.uuid4().hex,
+        user_id=b_id,
+        name="B's default",
+        slug="default",
     )
     storage.add_project_member(a_project["id"], b_id, role="viewer")
 
@@ -142,8 +156,10 @@ def test_get_project_by_id_membership_aware(storage):
     b_id = _user(storage, "b@example.com")
     c_id = _user(storage, "c@example.com")
     project = storage.create_project(
-        project_id=uuid.uuid4().hex, user_id=a_id,
-        name="Shared", slug="shared",
+        project_id=uuid.uuid4().hex,
+        user_id=a_id,
+        name="Shared",
+        slug="shared",
     )
     storage.add_project_member(project["id"], b_id, role="editor")
 
@@ -158,8 +174,10 @@ def test_get_project_by_id_membership_aware(storage):
 def test_add_member_rejects_invalid_role(storage):
     user_id = _user(storage, "owner@example.com")
     project = storage.create_project(
-        project_id=uuid.uuid4().hex, user_id=user_id,
-        name="P", slug="p",
+        project_id=uuid.uuid4().hex,
+        user_id=user_id,
+        name="P",
+        slug="p",
     )
     target = _user(storage, "target@example.com")
     with pytest.raises(storage.InvalidMemberRole):
@@ -170,7 +188,10 @@ def test_add_member_cannot_downgrade_owner(storage):
     """Owner row защищён: попытка перевести owner → editor отклоняется."""
     a_id = _user(storage, "owner@example.com")
     project = storage.create_project(
-        project_id=uuid.uuid4().hex, user_id=a_id, name="P", slug="p",
+        project_id=uuid.uuid4().hex,
+        user_id=a_id,
+        name="P",
+        slug="p",
     )
     with pytest.raises(storage.InvalidMemberRole):
         storage.add_project_member(project["id"], a_id, role="editor")
@@ -179,7 +200,10 @@ def test_add_member_cannot_downgrade_owner(storage):
 def test_remove_member_cannot_remove_owner(storage):
     a_id = _user(storage, "owner@example.com")
     project = storage.create_project(
-        project_id=uuid.uuid4().hex, user_id=a_id, name="P", slug="p",
+        project_id=uuid.uuid4().hex,
+        user_id=a_id,
+        name="P",
+        slug="p",
     )
     with pytest.raises(storage.InvalidMemberRole):
         storage.remove_project_member(project["id"], a_id)
@@ -190,7 +214,10 @@ def test_remove_member_returns_false_if_absent(storage):
     a_id = _user(storage, "owner@example.com")
     other = _user(storage, "other@example.com")
     project = storage.create_project(
-        project_id=uuid.uuid4().hex, user_id=a_id, name="P", slug="p",
+        project_id=uuid.uuid4().hex,
+        user_id=a_id,
+        name="P",
+        slug="p",
     )
     assert storage.remove_project_member(project["id"], other) is False
 
@@ -200,7 +227,10 @@ def test_add_member_upserts_role_change(storage):
     a_id = _user(storage, "owner@example.com")
     b_id = _user(storage, "b@example.com")
     project = storage.create_project(
-        project_id=uuid.uuid4().hex, user_id=a_id, name="P", slug="p",
+        project_id=uuid.uuid4().hex,
+        user_id=a_id,
+        name="P",
+        slug="p",
     )
     storage.add_project_member(project["id"], b_id, role="viewer")
     assert storage.get_member_role(project["id"], b_id) == "viewer"
@@ -213,7 +243,10 @@ def test_list_project_members_returns_owner_and_members(storage):
     a_id = _user(storage, "owner@example.com")
     b_id = _user(storage, "editor@example.com")
     project = storage.create_project(
-        project_id=uuid.uuid4().hex, user_id=a_id, name="P", slug="p",
+        project_id=uuid.uuid4().hex,
+        user_id=a_id,
+        name="P",
+        slug="p",
     )
     storage.add_project_member(project["id"], b_id, role="editor")
     members = storage.list_project_members(project["id"])
@@ -243,15 +276,17 @@ def test_migration_backfills_owner_row_for_legacy_projects(tmp_path, monkeypatch
     uid = uuid.uuid4().hex
     ms.create_user(user_id=uid, email=f"u-{uid[:6]}@x.io", password_hash="x")
     project = ms.create_project(
-        project_id=uuid.uuid4().hex, user_id=uid,
-        name="Legacy", slug="legacy",
+        project_id=uuid.uuid4().hex,
+        user_id=uid,
+        name="Legacy",
+        slug="legacy",
     )
 
     # Симулируем legacy state: удалить owner-row напрямую.
     with ms.get_engine().begin() as conn:
-        conn.execute(text(
-            "DELETE FROM project_members WHERE project_id = :pid"
-        ), {"pid": project["id"]})
+        conn.execute(
+            text("DELETE FROM project_members WHERE project_id = :pid"), {"pid": project["id"]}
+        )
     assert ms.get_member_role(project["id"], uid) is None
 
     # Force re-init → _apply_schema → _migrate_existing_schema → backfill.
@@ -277,25 +312,37 @@ def app_(tmp_path, monkeypatch):
     monkeypatch.setattr(ms, "_initialized", False)
 
     import app.db
+
     monkeypatch.setattr(app.db, "list_tables", lambda schema=None: [])
 
-    return create_app({
-        "TESTING": True,
-        "LOGIN_DISABLED": False,
-        "WTF_CSRF_ENABLED": False,
-    })
+    return create_app(
+        {
+            "TESTING": True,
+            "LOGIN_DISABLED": False,
+            "WTF_CSRF_ENABLED": False,
+        }
+    )
 
 
 def _register(client, email):
-    client.post("/auth/register", data={
-        "email": email, "password": "supersecret1", "confirm": "supersecret1",
-    })
+    client.post(
+        "/auth/register",
+        data={
+            "email": email,
+            "password": "supersecret1",
+            "confirm": "supersecret1",
+        },
+    )
 
 
 def _login(client, email):
-    client.post("/auth/login", data={
-        "email": email, "password": "supersecret1",
-    })
+    client.post(
+        "/auth/login",
+        data={
+            "email": email,
+            "password": "supersecret1",
+        },
+    )
 
 
 def test_outsider_gets_404_on_someone_elses_project(app_):
@@ -327,6 +374,7 @@ def test_member_can_view_shared_project(app_):
         get_project_by_slug,
         get_user_by_email,
     )
+
     c = app_.test_client()
     _register(c, "a@example.com")
     c.post("/projects/new", data={"name": "Shared A", "slug": "shared-a"})
@@ -358,6 +406,7 @@ def test_non_owner_cannot_delete_project_via_route(app_):
         get_project_by_slug,
         get_user_by_email,
     )
+
     c = app_.test_client()
     _register(c, "a@example.com")
     c.post("/projects/new", data={"name": "Owned A", "slug": "owned-a"})
@@ -383,6 +432,7 @@ def test_owner_can_still_delete_project(app_):
         get_project_by_slug,
         get_user_by_email,
     )
+
     c = app_.test_client()
     _register(c, "a@example.com")
     c.post("/projects/new", data={"name": "Owned A", "slug": "owned-a"})

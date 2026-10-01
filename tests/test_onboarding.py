@@ -37,17 +37,22 @@ def app_(tmp_path, monkeypatch):
     import app.api
     import app.dashboard
     import app.db
+
     def fake_list(schema=None):
         return []
+
     monkeypatch.setattr(app.db, "list_tables", fake_list)
     monkeypatch.setattr(app.api, "list_tables", fake_list)
 
     from app.app import create_app
-    app = create_app({
-        "TESTING": True,
-        "LOGIN_DISABLED": False,
-        "WTF_CSRF_ENABLED": False,
-    })
+
+    app = create_app(
+        {
+            "TESTING": True,
+            "LOGIN_DISABLED": False,
+            "WTF_CSRF_ENABLED": False,
+        }
+    )
     # No limiter reset — TESTING disables RATELIMIT_ENABLED, so the
     # storage backend isn't initialised and ``limiter.reset()`` would
     # raise on the inner assert. Tests below don't exhaust limits anyway.
@@ -67,6 +72,7 @@ def _register(client, email="u@example.com"):
     )
     from app.metrics_storage import get_user_by_email
     from app.projects import create_default_project_for
+
     user = get_user_by_email(email)
     if user:
         create_default_project_for(user["id"])
@@ -178,14 +184,22 @@ def test_regular_template_rendered_when_project_has_connections(client, monkeypa
     # First connection — wizard mode. Stub probe so it doesn't try to
     # connect to a real DB during the auto-test path.
     import app.connections as conn_mod
+
     monkeypatch.setattr(
-        conn_mod, "probe_connection",
+        conn_mod,
+        "probe_connection",
         lambda dsn, **_: {"status": "ok", "database": "x", "version": "y", "latency_ms": 1},
     )
-    client.post("/projects/default/connections/new", data={
-        "name": "First", "dsn": "postgresql://u:p@h:5432/d",
-        "schema_name": "public", "interval_minutes": 15, "is_active": "y",
-    })
+    client.post(
+        "/projects/default/connections/new",
+        data={
+            "name": "First",
+            "dsn": "postgresql://u:p@h:5432/d",
+            "schema_name": "public",
+            "interval_minutes": 15,
+            "is_active": "y",
+        },
+    )
     # Second GET should now hit the non-wizard form.
     resp = client.get("/projects/default/connections/new")
     body = resp.get_data(as_text=True)
@@ -199,18 +213,25 @@ def test_regular_template_rendered_when_project_has_connections(client, monkeypa
 def test_first_connection_auto_test_success_redirects_to_dashboard(client, monkeypatch):
     _register(client, "ok@example.com")
     import app.connections as conn_mod
+
     monkeypatch.setattr(
-        conn_mod, "probe_connection",
+        conn_mod,
+        "probe_connection",
         lambda dsn, **_: {
-            "status": "ok", "database": "appdb",
-            "version": "PostgreSQL 16.1", "latency_ms": 4,
+            "status": "ok",
+            "database": "appdb",
+            "version": "PostgreSQL 16.1",
+            "latency_ms": 4,
         },
     )
     resp = client.post(
         "/projects/default/connections/new",
         data={
-            "name": "Prod", "dsn": "postgresql://u:p@h:5432/d",
-            "schema_name": "public", "interval_minutes": 15, "is_active": "y",
+            "name": "Prod",
+            "dsn": "postgresql://u:p@h:5432/d",
+            "schema_name": "public",
+            "interval_minutes": 15,
+            "is_active": "y",
         },
         follow_redirects=False,
     )
@@ -221,18 +242,25 @@ def test_first_connection_auto_test_success_redirects_to_dashboard(client, monke
 def test_first_connection_auto_test_failure_redirects_to_connections_list(client, monkeypatch):
     _register(client, "bad@example.com")
     import app.connections as conn_mod
+
     monkeypatch.setattr(
-        conn_mod, "probe_connection",
+        conn_mod,
+        "probe_connection",
         lambda dsn, **_: {
-            "status": "error", "code": "auth_failed",
-            "message": "Неверный логин или пароль.", "latency_ms": 12,
+            "status": "error",
+            "code": "auth_failed",
+            "message": "Неверный логин или пароль.",
+            "latency_ms": 12,
         },
     )
     resp = client.post(
         "/projects/default/connections/new",
         data={
-            "name": "Bad", "dsn": "postgresql://u:wrong@h:5432/d",
-            "schema_name": "public", "interval_minutes": 15, "is_active": "y",
+            "name": "Bad",
+            "dsn": "postgresql://u:wrong@h:5432/d",
+            "schema_name": "public",
+            "interval_minutes": 15,
+            "is_active": "y",
         },
         follow_redirects=False,
     )
@@ -247,6 +275,7 @@ def test_first_connection_auto_test_failure_redirects_to_connections_list(client
         list_connections_for_project,
         list_projects_for_user,
     )
+
     user = get_user_by_email("bad@example.com")
     project = list_projects_for_user(user["id"])[0]
     assert len(list_connections_for_project(project["id"])) == 1
@@ -287,15 +316,23 @@ def test_dashboard_empty_state_skips_legacy_global_schema_fetch(client, monkeypa
 def test_dashboard_no_empty_state_with_at_least_one_connection(client, monkeypatch):
     _register(client, "stocked@example.com")
     import app.connections as conn_mod
+
     monkeypatch.setattr(
-        conn_mod, "probe_connection",
+        conn_mod,
+        "probe_connection",
         lambda dsn, **_: {"status": "ok", "database": "x", "version": "y", "latency_ms": 1},
     )
     # Add one connection; redirect goes to /dashboard (success path).
-    client.post("/projects/default/connections/new", data={
-        "name": "Prod", "dsn": "postgresql://u:p@h:5432/d",
-        "schema_name": "public", "interval_minutes": 15, "is_active": "y",
-    })
+    client.post(
+        "/projects/default/connections/new",
+        data={
+            "name": "Prod",
+            "dsn": "postgresql://u:p@h:5432/d",
+            "schema_name": "public",
+            "interval_minutes": 15,
+            "is_active": "y",
+        },
+    )
     resp = client.get("/dashboard/")
     body = resp.get_data(as_text=True)
     assert "Нет подключений" not in body

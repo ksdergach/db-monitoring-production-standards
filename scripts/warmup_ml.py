@@ -12,6 +12,7 @@
 Использование:
     python -m scripts.warmup_ml
 """
+
 from __future__ import annotations
 
 import argparse
@@ -26,18 +27,22 @@ def _tables_from_metrics(project_id: str) -> list[str]:
     from app.metrics_storage import get_engine
 
     with get_engine().connect() as conn:
-        rows = conn.execute(text("""
+        rows = conn.execute(
+            text("""
             SELECT DISTINCT table_name
             FROM metrics
             WHERE project_id = :project_id
             ORDER BY table_name
-        """), {"project_id": project_id}).fetchall()
+        """),
+            {"project_id": project_id},
+        ).fetchall()
     return [r[0] for r in rows]
 
 
 def warmup_changepoints(project_id: str = "legacy", tables: list[str] | None = None) -> dict:
     """Прогон PELT/CUSUM по всем (таблица × метрика) и запись в changepoints."""
     from ml.changepoint import detect_all
+
     return detect_all(project_id=project_id, tables=tables)
 
 
@@ -84,12 +89,14 @@ def warmup_anomalies(project_id: str = "legacy", tables: list[str] | None = None
 def warmup_forecasts(project_id: str = "legacy", tables: list[str] | None = None) -> dict:
     """Тренируем Prophet/linear по row_count для всех таблиц, кладём в models/."""
     from ml.forecast import retrain_all
+
     return retrain_all(project_id=project_id, tables=tables)
 
 
 def warmup_drift(project_id: str = "legacy", tables: list[str] | None = None) -> dict:
     """Считаем PSI/KS на column_distribution и пишем в кеш drift_reports."""
     from ml.drift import compute_and_store_drift_all
+
     return compute_and_store_drift_all(project_id=project_id, tables=tables)
 
 

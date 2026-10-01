@@ -17,20 +17,23 @@ from app.feature_flags import is_enabled, require_flag, snapshot
 # ── is_enabled matrix ──────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("raw, expected", [
-    ("1", True),
-    ("true", True),
-    ("TRUE", True),
-    ("yes", True),
-    ("on", True),
-    ("0", False),
-    ("false", False),
-    ("no", False),
-    ("off", False),
-    ("", False),
-    ("   ", False),
-    ("maybe", False),  # unknown → off
-])
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("1", True),
+        ("true", True),
+        ("TRUE", True),
+        ("yes", True),
+        ("on", True),
+        ("0", False),
+        ("false", False),
+        ("no", False),
+        ("off", False),
+        ("", False),
+        ("   ", False),
+        ("maybe", False),  # unknown → off
+    ],
+)
 def test_is_enabled_truthy_matrix(monkeypatch, raw, expected):
     monkeypatch.setenv("FF_DEMO", raw)
     assert is_enabled("demo") is expected
@@ -99,6 +102,7 @@ def test_require_flag_lookup_is_per_request(monkeypatch):
 
 def test_require_flag_attaches_marker():
     """The wrapper carries the flag name so admin tooling can introspect."""
+
     @require_flag("foo")
     def view():
         return "x"
@@ -141,6 +145,7 @@ def app_(tmp_path, monkeypatch):
     monkeypatch.setattr(storage, "_initialized", False)
 
     import app.db
+
     monkeypatch.setattr(app.db, "list_tables", lambda schema=None: [])
 
     return create_app({"TESTING": True})

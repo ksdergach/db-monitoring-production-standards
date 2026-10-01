@@ -37,6 +37,7 @@ def health_app(tmp_path, monkeypatch):
     # Stub the target-DB engine so SELECT 1 succeeds against the same
     # SQLite file (cheap to spin up, no Postgres dependency in unit tests).
     from sqlalchemy import create_engine
+
     stub_engine = create_engine(f"sqlite:///{db_path}")
     monkeypatch.setattr("app.db._engine", stub_engine)
 
@@ -100,6 +101,7 @@ def test_healthz_version_honours_app_version_env(client, monkeypatch):
     """
     # Reset the per-process cache so the new env var is picked up.
     import app.health as health_mod
+
     monkeypatch.setattr(health_mod, "_VERSION_CACHE", None)
     monkeypatch.setenv("APP_VERSION", "v9.9.9-test")
     body = client.get("/healthz").get_json()
@@ -111,8 +113,10 @@ def test_healthz_version_honours_app_version_env(client, monkeypatch):
 
 def test_healthz_returns_503_when_monitor_db_down(client, monkeypatch):
     """A broken monitor_db engine makes status='degraded' and HTTP 503."""
+
     def boom(*_a, **_kw):
         raise RuntimeError("simulated metrics-store connection failure")
+
     # Patch where the health check imports it: late import in _check_monitor_db
     monkeypatch.setattr("app.metrics_storage.get_engine", boom)
 
@@ -129,6 +133,7 @@ def test_healthz_returns_503_when_monitor_db_down(client, monkeypatch):
 def test_healthz_returns_503_when_target_db_down(client, monkeypatch):
     def boom(*_a, **_kw):
         raise RuntimeError("target DB unreachable")
+
     monkeypatch.setattr("app.db.get_engine", boom)
 
     resp = client.get("/healthz")
@@ -179,7 +184,8 @@ def test_healthz_smtp_non_critical_under_strict(client, monkeypatch):
     monkeypatch.setattr("app.health._check_ratelimit_storage", lambda _uri: {"status": "ok"})
 
     payload, status = build_health_payload(
-        strict=True, ratelimit_storage_uri="redis://example",
+        strict=True,
+        ratelimit_storage_uri="redis://example",
     )
 
     assert status == 200
@@ -248,6 +254,7 @@ def test_check_timeout_is_enforced():
     Exercises ``build_health_payload`` directly because client routing
     adds noise; we want to measure the wall-clock from the check runner.
     """
+
     def slow(*_a, **_kw):
         time.sleep(HEALTH_TIMEOUT_S + 0.5)
         return {"status": "ok"}
@@ -255,7 +262,8 @@ def test_check_timeout_is_enforced():
     started = time.monotonic()
     with patch("app.health._check_monitor_db", side_effect=slow):
         payload, status = build_health_payload(
-            strict=False, ratelimit_storage_uri="memory://",
+            strict=False,
+            ratelimit_storage_uri="memory://",
         )
     elapsed = time.monotonic() - started
 

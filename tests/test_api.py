@@ -16,13 +16,16 @@ def client():
 # GET /api/tables
 # ---------------------------------------------------------------------------
 
+
 def test_tables_returns_list(client):
     tables = [{"table_name": "users", "schema": "public"}]
     rc = {"ts": "2026-04-25T10:00:00+00:00", "value": 50000.0, "tags": None}
     nr = {"ts": "2026-04-25T10:00:00+00:00", "value": 0.05, "tags": None}
 
-    with patch("app.api.list_tables", return_value=tables), \
-         patch("app.api.get_latest_metric", side_effect=[rc, nr]):
+    with (
+        patch("app.api.list_tables", return_value=tables),
+        patch("app.api.get_latest_metric", side_effect=[rc, nr]),
+    ):
         resp = client.get("/api/tables")
 
     assert resp.status_code == 200
@@ -37,8 +40,10 @@ def test_tables_returns_list(client):
 def test_tables_no_metrics_returns_nulls(client):
     tables = [{"table_name": "empty_table", "schema": "public"}]
 
-    with patch("app.api.list_tables", return_value=tables), \
-         patch("app.api.get_latest_metric", return_value=None):
+    with (
+        patch("app.api.list_tables", return_value=tables),
+        patch("app.api.get_latest_metric", return_value=None),
+    ):
         resp = client.get("/api/tables")
 
     assert resp.status_code == 200
@@ -49,8 +54,10 @@ def test_tables_no_metrics_returns_nulls(client):
 
 
 def test_tables_empty_db(client):
-    with patch("app.api.list_tables", return_value=[]), \
-         patch("app.api.get_latest_metric", return_value=None):
+    with (
+        patch("app.api.list_tables", return_value=[]),
+        patch("app.api.get_latest_metric", return_value=None),
+    ):
         resp = client.get("/api/tables")
 
     assert resp.status_code == 200
@@ -60,6 +67,7 @@ def test_tables_empty_db(client):
 # ---------------------------------------------------------------------------
 # GET /api/metrics/<table>
 # ---------------------------------------------------------------------------
+
 
 def test_metrics_default_params(client):
     rows = [
@@ -74,6 +82,7 @@ def test_metrics_default_params(client):
     assert len(data) == 2
     assert data[0] == {"ts": "2026-04-24T10:00:00+00:00", "value": 100.0}
     from datetime import timedelta
+
     # #53: third positional arg is the tenant project_id. In tests without
     # an authenticated session it falls back to "legacy".
     mock_get.assert_called_once_with("users", "row_count", "legacy", window=timedelta(hours=24))
@@ -85,6 +94,7 @@ def test_metrics_custom_params(client):
 
     assert resp.status_code == 200
     from datetime import timedelta
+
     mock_get.assert_called_once_with("orders", "null_rate", "legacy", window=timedelta(days=7))
 
 
@@ -103,6 +113,7 @@ def test_metrics_invalid_range(client):
 # ---------------------------------------------------------------------------
 # GET /api/schema/<table>
 # ---------------------------------------------------------------------------
+
 
 def test_schema_returns_columns(client):
     columns = [
@@ -131,9 +142,11 @@ def test_schema_table_not_found(client):
 # GET /api/notifications  (#76)
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def notifications_storage(tmp_path, monkeypatch):
     import app.metrics_storage as ms
+
     db_path = tmp_path / "metrics.db"
     monkeypatch.setattr(ms.settings, "MONITOR_DB_URL", f"sqlite:///{db_path}")
     monkeypatch.setattr(ms, "_engine", None)
@@ -145,9 +158,9 @@ def notifications_storage(tmp_path, monkeypatch):
 
 def test_notifications_returns_paginated_envelope(client, notifications_storage):
     from app.metrics_storage import save_notification
+
     for i in range(3):
-        save_notification(event_type="anomaly", message=f"m{i}",
-                          status="sent", table_name="orders")
+        save_notification(event_type="anomaly", message=f"m{i}", status="sent", table_name="orders")
 
     resp = client.get("/api/notifications")
     assert resp.status_code == 200
@@ -161,6 +174,7 @@ def test_notifications_returns_paginated_envelope(client, notifications_storage)
 
 def test_notifications_filters_by_event_type(client, notifications_storage):
     from app.metrics_storage import save_notification
+
     save_notification(event_type="anomaly", message="a", status="sent", table_name="orders")
     save_notification(event_type="schema_drift", message="s", status="sent", table_name="orders")
 
@@ -172,9 +186,11 @@ def test_notifications_filters_by_event_type(client, notifications_storage):
 
 def test_notifications_filters_by_status_and_table(client, notifications_storage):
     from app.metrics_storage import save_notification
+
     save_notification(event_type="anomaly", message="ok", status="sent", table_name="orders")
-    save_notification(event_type="anomaly", message="bad", status="failed",
-                      table_name="users", error="boom")
+    save_notification(
+        event_type="anomaly", message="bad", status="failed", table_name="users", error="boom"
+    )
 
     resp = client.get("/api/notifications?status=failed&table=users")
     body = resp.get_json()
@@ -184,9 +200,9 @@ def test_notifications_filters_by_status_and_table(client, notifications_storage
 
 def test_notifications_pagination(client, notifications_storage):
     from app.metrics_storage import save_notification
+
     for i in range(5):
-        save_notification(event_type="anomaly", message=f"m{i}",
-                          status="sent", table_name="orders")
+        save_notification(event_type="anomaly", message=f"m{i}", status="sent", table_name="orders")
 
     page1 = client.get("/api/notifications?limit=2&offset=0").get_json()
     page2 = client.get("/api/notifications?limit=2&offset=2").get_json()
@@ -217,6 +233,7 @@ def test_notifications_invalid_limit(client):
 # GET /api/notifications — tenant isolation (#137)
 # ---------------------------------------------------------------------------
 
+
 def test_notifications_api_scoped_to_active_project(notifications_storage):
     """Active project sees only its own notifications, not another project's."""
     from flask import g
@@ -224,10 +241,12 @@ def test_notifications_api_scoped_to_active_project(notifications_storage):
     from app.app import create_app
     from app.metrics_storage import save_notification
 
-    save_notification(event_type="anomaly", message="mine",
-                      status="sent", table_name="t", project_id="proj-a")
-    save_notification(event_type="anomaly", message="theirs",
-                      status="sent", table_name="t", project_id="proj-b")
+    save_notification(
+        event_type="anomaly", message="mine", status="sent", table_name="t", project_id="proj-a"
+    )
+    save_notification(
+        event_type="anomaly", message="theirs", status="sent", table_name="t", project_id="proj-b"
+    )
 
     scoped_app = create_app({"TESTING": True})
 
@@ -248,8 +267,13 @@ def test_notifications_api_no_project_user_sees_empty(client, notifications_stor
 
     from app.metrics_storage import save_notification
 
-    save_notification(event_type="anomaly", message="legacy msg",
-                      status="sent", table_name="t", project_id="legacy")
+    save_notification(
+        event_type="anomaly",
+        message="legacy msg",
+        status="sent",
+        table_name="t",
+        project_id="legacy",
+    )
 
     mock_user = MagicMock()
     mock_user.is_authenticated = True

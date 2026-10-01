@@ -12,8 +12,11 @@ def _series(values, start=None, step_minutes=15):
     # Anchor to now so timestamps always fall within the default 14-day query window.
     base = start or datetime.now(UTC) - timedelta(minutes=step_minutes * len(values))
     return [
-        {"ts": (base + timedelta(minutes=step_minutes * i)).isoformat(timespec="seconds"),
-         "value": v, "tags": None}
+        {
+            "ts": (base + timedelta(minutes=step_minutes * i)).isoformat(timespec="seconds"),
+            "value": v,
+            "tags": None,
+        }
         for i, v in enumerate(values)
     ]
 
@@ -21,8 +24,10 @@ def _series(values, start=None, step_minutes=15):
 @pytest.fixture
 def clean_metrics(tmp_path, monkeypatch):
     from app.config import settings
-    monkeypatch.setattr(settings, "MONITOR_DB_URL", f"sqlite:///{tmp_path/'m.db'}")
+
+    monkeypatch.setattr(settings, "MONITOR_DB_URL", f"sqlite:///{tmp_path / 'm.db'}")
     import app.metrics_storage as ms
+
     monkeypatch.setattr(ms, "_engine", None)
     monkeypatch.setattr(ms, "_initialized", False)
     yield
@@ -33,6 +38,7 @@ def clean_metrics(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 # Detection — synthetic spike (mirrors orders.null_rate seed scenario)
 # ---------------------------------------------------------------------------
+
 
 def test_detects_step_shift_in_synthetic_series():
     values = [0.02] * 30 + [0.20] * 30  # mean shift 0.02 → 0.20
@@ -50,6 +56,7 @@ def test_no_changepoint_on_stable_series():
     # Constant-mean series with small Gaussian noise — what stable monitoring
     # data looks like. PELT should not flag any change-points here.
     import random
+
     random.seed(42)
     rows = _series([100.0 + random.gauss(0, 0.5) for _ in range(60)])
     with patch.object(cp_mod, "get_metrics", return_value=rows):
@@ -71,8 +78,10 @@ def test_detect_all_persists_events(clean_metrics):
         return spike if (table, metric) == ("orders", "null_rate") else flat
 
     tables = [{"table_name": "orders"}, {"table_name": "users"}]
-    with patch.object(cp_mod, "get_metrics", side_effect=fake_get), \
-         patch("app.db.list_tables", return_value=tables):
+    with (
+        patch.object(cp_mod, "get_metrics", side_effect=fake_get),
+        patch("app.db.list_tables", return_value=tables),
+    ):
         counts = cp_mod.detect_all()
 
     assert counts["detected"] >= 1
@@ -85,13 +94,16 @@ def test_detect_all_persists_events(clean_metrics):
 # Storage upsert behaviour
 # ---------------------------------------------------------------------------
 
+
 def test_save_changepoints_upserts_on_repeat(clean_metrics):
     ts = (datetime.now(UTC) - timedelta(hours=1)).isoformat(timespec="seconds")
     e = {
         "ts": ts,
         "table_name": "orders",
         "metric_name": "null_rate",
-        "score": 5.0, "value_before": 0.02, "value_after": 0.20,
+        "score": 5.0,
+        "value_before": 0.02,
+        "value_after": 0.20,
     }
     save_changepoints([e])
     save_changepoints([{**e, "score": 6.5}])  # same key, updated score
@@ -105,6 +117,7 @@ def test_save_changepoints_deduplicates_cross_run_cluster(clean_metrics):
     # across multiple runs with slightly different timestamps (±hours apart).
     # Only the highest-score record should survive.
     base = datetime.now(UTC) - timedelta(hours=10)
+
     def _e(offset_hours: float, score: float) -> dict:
         return {
             "ts": (base + timedelta(hours=offset_hours)).isoformat(timespec="seconds"),
@@ -115,10 +128,10 @@ def test_save_changepoints_deduplicates_cross_run_cluster(clean_metrics):
             "value_after": 5000.0,  # all rising — same direction
         }
 
-    save_changepoints([_e(0, 49.7)])   # run 1
-    save_changepoints([_e(1, 50.7)])   # run 2 — better, replaces
-    save_changepoints([_e(2, 51.7)])   # run 3 — better, replaces
-    save_changepoints([_e(3, 7.0)])    # run 4 — worse, ignored
+    save_changepoints([_e(0, 49.7)])  # run 1
+    save_changepoints([_e(1, 50.7)])  # run 2 — better, replaces
+    save_changepoints([_e(2, 51.7)])  # run 3 — better, replaces
+    save_changepoints([_e(3, 7.0)])  # run 4 — worse, ignored
 
     rows = get_changepoints("orders")
     assert len(rows) == 1, f"expected 1 record, got {len(rows)}"
@@ -129,16 +142,30 @@ def test_save_changepoints_preserves_opposite_directions(clean_metrics):
     # A spike has two legitimate events: rise then fall. Both must be kept
     # even though they fall within the 72 h dedup window.
     base = datetime.now(UTC) - timedelta(hours=5)
-    save_changepoints([{
-        "ts": base.isoformat(timespec="seconds"),
-        "table_name": "orders", "metric_name": "row_count",
-        "score": 50.0, "value_before": 1000.0, "value_after": 5000.0,  # rise
-    }])
-    save_changepoints([{
-        "ts": (base + timedelta(hours=2)).isoformat(timespec="seconds"),
-        "table_name": "orders", "metric_name": "row_count",
-        "score": 50.0, "value_before": 5000.0, "value_after": 1000.0,  # fall
-    }])
+    save_changepoints(
+        [
+            {
+                "ts": base.isoformat(timespec="seconds"),
+                "table_name": "orders",
+                "metric_name": "row_count",
+                "score": 50.0,
+                "value_before": 1000.0,
+                "value_after": 5000.0,  # rise
+            }
+        ]
+    )
+    save_changepoints(
+        [
+            {
+                "ts": (base + timedelta(hours=2)).isoformat(timespec="seconds"),
+                "table_name": "orders",
+                "metric_name": "row_count",
+                "score": 50.0,
+                "value_before": 5000.0,
+                "value_after": 1000.0,  # fall
+            }
+        ]
+    )
 
     rows = get_changepoints("orders")
     assert len(rows) == 2, "rise and fall are separate events and must both be kept"
@@ -186,6 +213,7 @@ def test_changepoint_dedupe_does_not_cross_project(clean_metrics):
 # /api/changepoints/<table>
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def client():
     app = create_app({"TESTING": True})
@@ -194,9 +222,16 @@ def client():
 
 
 def test_changepoints_endpoint_returns_payload(client):
-    payload = [{"ts": "2026-04-25T14:00:00+00:00", "table_name": "orders",
-                "metric_name": "null_rate", "score": 6.5,
-                "value_before": 0.02, "value_after": 0.20}]
+    payload = [
+        {
+            "ts": "2026-04-25T14:00:00+00:00",
+            "table_name": "orders",
+            "metric_name": "null_rate",
+            "score": 6.5,
+            "value_before": 0.02,
+            "value_after": 0.20,
+        }
+    ]
     with patch("app.api.get_changepoints", return_value=payload):
         resp = client.get("/api/changepoints/orders")
     assert resp.status_code == 200

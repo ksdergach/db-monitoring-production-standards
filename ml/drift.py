@@ -13,6 +13,7 @@ against the oldest snapshot in the rolling 7-day baseline. Two metrics:
 
 No scipy dependency — both metrics are short and self-contained.
 """
+
 from __future__ import annotations
 
 import json
@@ -32,8 +33,15 @@ BASELINE_DAYS = 7
 SMOOTHING = 1e-4
 
 _NUMERIC_TYPE_FRAGMENTS = (
-    "int", "numeric", "decimal", "real", "double", "float",
-    "money", "serial", "bigserial",
+    "int",
+    "numeric",
+    "decimal",
+    "real",
+    "double",
+    "float",
+    "money",
+    "serial",
+    "bigserial",
 )
 
 
@@ -99,7 +107,7 @@ def ks_two_sample(
 
     n_eff = (n1 * n2) / (n1 + n2)
     p = math.exp(-2.0 * d * d * n_eff)  # one-sided
-    p = min(1.0, 2.0 * p)               # two-sided approximation
+    p = min(1.0, 2.0 * p)  # two-sided approximation
     return d, p
 
 
@@ -111,9 +119,7 @@ def _severity(psi_value: float) -> str:
     return "ok"
 
 
-def _load_distributions(
-    table_name: str, since: datetime, project_id: str = "legacy"
-) -> list[dict]:
+def _load_distributions(table_name: str, since: datetime, project_id: str = "legacy") -> list[dict]:
     """Pull every column_distribution snapshot for a table since `since`.
 
     Decodes JSON tags eagerly so callers can iterate without re-parsing.
@@ -128,11 +134,14 @@ def _load_distributions(
         ORDER BY ts
     """)
     with get_engine().connect() as conn:
-        rows = conn.execute(stmt, {
-            "project_id": project_id,
-            "table_name": table_name,
-            "since": since.isoformat(timespec="seconds"),
-        }).fetchall()
+        rows = conn.execute(
+            stmt,
+            {
+                "project_id": project_id,
+                "table_name": table_name,
+                "since": since.isoformat(timespec="seconds"),
+            },
+        ).fetchall()
     out = []
     for ts, tags in rows:
         if not tags:
@@ -200,14 +209,16 @@ def compute_drift(
     for column, cur in current.items():
         base = baseline.get(column)
         if base is None or base["ts"] == cur["ts"]:
-            out.append({
-                "column": column,
-                "data_type": cur.get("data_type"),
-                "psi": None,
-                "ks_pvalue": None,
-                "is_drift": False,
-                "severity": "insufficient_data",
-            })
+            out.append(
+                {
+                    "column": column,
+                    "data_type": cur.get("data_type"),
+                    "psi": None,
+                    "ks_pvalue": None,
+                    "is_drift": False,
+                    "severity": "insufficient_data",
+                }
+            )
             continue
 
         cur_buckets = cur.get("buckets") or []
@@ -216,20 +227,20 @@ def compute_drift(
 
         ks_p: float | None = None
         if _is_numeric(cur.get("data_type")):
-            _, ks_p = ks_two_sample(
-                _numeric_pairs(base_buckets), _numeric_pairs(cur_buckets)
-            )
+            _, ks_p = ks_two_sample(_numeric_pairs(base_buckets), _numeric_pairs(cur_buckets))
 
         severity = _severity(psi_val)
         is_drift = severity != "ok" or (ks_p is not None and ks_p < KS_PVALUE_THRESHOLD)
-        out.append({
-            "column": column,
-            "data_type": cur.get("data_type"),
-            "psi": round(psi_val, 4),
-            "ks_pvalue": round(ks_p, 4) if ks_p is not None else None,
-            "is_drift": is_drift,
-            "severity": severity,
-        })
+        out.append(
+            {
+                "column": column,
+                "data_type": cur.get("data_type"),
+                "psi": round(psi_val, 4),
+                "ks_pvalue": round(ks_p, 4) if ks_p is not None else None,
+                "is_drift": is_drift,
+                "severity": severity,
+            }
+        )
 
     out.sort(key=lambda r: -(r["psi"] or 0))
     return out

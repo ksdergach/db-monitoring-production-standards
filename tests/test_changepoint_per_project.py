@@ -7,6 +7,7 @@ Covers:
 - project_id is forwarded to detect_all() and notify_changepoint()
 - projects without Telegram config are silently skipped
 """
+
 from __future__ import annotations
 
 import uuid
@@ -18,8 +19,10 @@ from cryptography.fernet import Fernet
 @pytest.fixture
 def db(tmp_path, monkeypatch):
     from app.config import settings
+
     monkeypatch.setattr(settings, "MONITOR_DB_URL", f"sqlite:///{tmp_path / 'm.db'}")
     import app.metrics_storage as ms
+
     monkeypatch.setattr(ms, "_engine", None)
     monkeypatch.setattr(ms, "_initialized", False)
     yield ms
@@ -31,6 +34,7 @@ def db(tmp_path, monkeypatch):
 def fernet_key(monkeypatch):
     monkeypatch.setenv("FERNET_KEY", Fernet.generate_key().decode())
     from app import crypto
+
     crypto.reset_for_tests()
 
 
@@ -52,6 +56,7 @@ def _seed_project(db) -> str:
 
 def _save_telegram(db, project_id: str, chat_id: str = "111", token: str = "tok") -> None:
     from app import crypto
+
     db.save_project_notifications(
         project_id,
         telegram_bot_token=crypto.encrypt_token(token),
@@ -75,6 +80,7 @@ def test_list_project_ids_with_telegram_returns_configured(db):
 def test_list_project_ids_with_telegram_excludes_empty_chat_id(db):
     pid = _seed_project(db)
     from app import crypto
+
     db.save_project_notifications(
         pid,
         telegram_bot_token=crypto.encrypt_token("tok"),
@@ -94,15 +100,22 @@ def test_list_project_ids_with_telegram_excludes_null_token(db):
 
 def test_list_metric_tables_returns_only_own_tables(db):
     from datetime import UTC, datetime
+
     now = datetime.now(UTC)
 
-    db.save_metrics([
-        {"ts": now, "table_name": "users",  "metric_name": "row_count", "value": 1},
-        {"ts": now, "table_name": "orders", "metric_name": "row_count", "value": 2},
-    ], project_id="proj-a")
-    db.save_metrics([
-        {"ts": now, "table_name": "events", "metric_name": "row_count", "value": 3},
-    ], project_id="proj-b")
+    db.save_metrics(
+        [
+            {"ts": now, "table_name": "users", "metric_name": "row_count", "value": 1},
+            {"ts": now, "table_name": "orders", "metric_name": "row_count", "value": 2},
+        ],
+        project_id="proj-a",
+    )
+    db.save_metrics(
+        [
+            {"ts": now, "table_name": "events", "metric_name": "row_count", "value": 3},
+        ],
+        project_id="proj-b",
+    )
 
     assert set(db.list_metric_tables("proj-a")) == {"users", "orders"}
     assert db.list_metric_tables("proj-b") == ["events"]
@@ -114,6 +127,7 @@ def test_list_metric_tables_returns_only_own_tables(db):
 
 def test_load_project_telegram_config_returns_tuple(db):
     from app import crypto
+
     pid = _seed_project(db)
     db.save_project_notifications(
         pid,
@@ -122,6 +136,7 @@ def test_load_project_telegram_config_returns_tuple(db):
         throttle_minutes=15,
     )
     from app.notifications.telegram import load_project_telegram_config
+
     result = load_project_telegram_config(pid)
     assert result is not None
     bot_token, chat_id, throttle = result
@@ -132,6 +147,7 @@ def test_load_project_telegram_config_returns_tuple(db):
 
 def test_load_project_telegram_config_returns_none_if_missing(db):
     from app.notifications.telegram import load_project_telegram_config
+
     assert load_project_telegram_config("nonexistent") is None
 
 
@@ -146,14 +162,18 @@ def stub_changepoint(monkeypatch):
         calls.append({"project_id": project_id, "tables": tables})
         if project_id != "legacy":
             return {
-                "detected": 1, "tables": 1, "errors": 0,
-                "events": [{
-                    "table_name": "users",
-                    "metric_name": "row_count",
-                    "value_before": 1000.0,
-                    "value_after": 2000.0,
-                    "ts": "2026-06-04T10:00:00+00:00",
-                }],
+                "detected": 1,
+                "tables": 1,
+                "errors": 0,
+                "events": [
+                    {
+                        "table_name": "users",
+                        "metric_name": "row_count",
+                        "value_before": 1000.0,
+                        "value_after": 2000.0,
+                        "ts": "2026-06-04T10:00:00+00:00",
+                    }
+                ],
             }
         return {"detected": 0, "tables": 0, "errors": 0, "events": []}
 
@@ -174,6 +194,7 @@ def test_detect_changepoints_iterates_all_projects_including_legacy(
     monkeypatch.setattr("app.notifications.telegram.notify_changepoint", lambda *a, **kw: None)
 
     from collectors.scheduler import detect_changepoints
+
     detect_changepoints()
 
     called_ids = [c["project_id"] for c in stub_changepoint]
@@ -181,16 +202,23 @@ def test_detect_changepoints_iterates_all_projects_including_legacy(
     assert pid in called_ids
 
 
-def test_detect_changepoints_passes_project_tables_to_detect_all(
-    db, stub_changepoint, monkeypatch
-):
+def test_detect_changepoints_passes_project_tables_to_detect_all(db, stub_changepoint, monkeypatch):
     from datetime import UTC, datetime
+
     pid = _seed_project(db)
     _save_telegram(db, pid)
 
-    db.save_metrics([
-        {"ts": datetime.now(UTC), "table_name": "orders", "metric_name": "row_count", "value": 1},
-    ], project_id=pid)
+    db.save_metrics(
+        [
+            {
+                "ts": datetime.now(UTC),
+                "table_name": "orders",
+                "metric_name": "row_count",
+                "value": 1,
+            },
+        ],
+        project_id=pid,
+    )
 
     monkeypatch.setattr(
         "app.notifications.telegram.load_project_telegram_config",
@@ -198,6 +226,7 @@ def test_detect_changepoints_passes_project_tables_to_detect_all(
     )
 
     from collectors.scheduler import detect_changepoints
+
     detect_changepoints()
 
     call = next(c for c in stub_changepoint if c["project_id"] == pid)
@@ -222,14 +251,13 @@ def test_detect_changepoints_sends_notification_with_correct_project_id(
     monkeypatch.setattr("app.notifications.telegram.notify_changepoint", _notify)
 
     from collectors.scheduler import detect_changepoints
+
     detect_changepoints()
 
     assert any(c["project_id"] == pid and c["table"] == "users" for c in notify_calls)
 
 
-def test_detect_changepoints_skips_project_without_telegram(
-    db, stub_changepoint, monkeypatch
-):
+def test_detect_changepoints_skips_project_without_telegram(db, stub_changepoint, monkeypatch):
     notify_calls: list = []
 
     monkeypatch.setattr(
@@ -246,6 +274,7 @@ def test_detect_changepoints_skips_project_without_telegram(
     )
 
     from collectors.scheduler import detect_changepoints
+
     detect_changepoints()
 
     assert notify_calls == []
@@ -284,6 +313,7 @@ def test_detect_changepoints_no_notification_on_repeat_run(db, monkeypatch):
     run for real so cross-run deduplication is exercised.
     """
     from datetime import UTC, datetime
+
     notify_calls: list = []
     pid = _seed_project(db)
     _save_telegram(db, pid)
@@ -301,8 +331,7 @@ def test_detect_changepoints_no_notification_on_repeat_run(db, monkeypatch):
     monkeypatch.setattr(
         "ml.changepoint.detect_changepoints",
         lambda table, metric, window_days=30, project_id="legacy": (
-            [raw_event] if project_id == pid and table == "orders" and metric == "row_count"
-            else []
+            [raw_event] if project_id == pid and table == "orders" and metric == "row_count" else []
         ),
     )
     monkeypatch.setattr(
@@ -325,6 +354,7 @@ def test_detect_changepoints_no_notification_on_repeat_run(db, monkeypatch):
     monkeypatch.setattr("app.db.list_tables", lambda: [])
 
     from collectors.scheduler import detect_changepoints
+
     detect_changepoints()
     first_count = len(notify_calls)
     assert first_count == 1, "first run should notify once"

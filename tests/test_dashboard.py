@@ -19,6 +19,7 @@ def _fernet_key(monkeypatch):
 def client(tmp_path, monkeypatch):
     db_path = tmp_path / "monitor.db"
     import app.metrics_storage as storage
+
     monkeypatch.setattr(storage.settings, "MONITOR_DB_URL", f"sqlite:///{db_path}")
     monkeypatch.setattr(storage, "_engine", None)
     monkeypatch.setattr(storage, "_initialized", False)
@@ -34,6 +35,7 @@ def _latest_factory(values: dict):
     it for signature compatibility but ignores it (tests don't care which
     tenant is queried — they're already scoped to a single in-memory DB).
     """
+
     def _side_effect(table_name, metric_name, project_id=None):
         v = values.get((table_name, metric_name))
         if v is None:
@@ -41,6 +43,7 @@ def _latest_factory(values: dict):
         if isinstance(v, dict):
             return v
         return {"ts": "2026-04-29T10:00:00+00:00", "value": v, "tags": None}
+
     return _side_effect
 
 
@@ -51,11 +54,14 @@ def _login_with_project_connection(
     dsn: str = "postgresql://u:p@tenant-db:5432/app",
     schema_name: str = "analytics",
 ) -> dict:
-    client.post("/auth/register", data={
-        "email": email,
-        "password": "supersecret1",
-        "confirm": "supersecret1",
-    })
+    client.post(
+        "/auth/register",
+        data={
+            "email": email,
+            "password": "supersecret1",
+            "confirm": "supersecret1",
+        },
+    )
 
     from app.metrics_storage import (
         create_connection,
@@ -121,10 +127,12 @@ def test_overview_renders_kpis_and_table_from_storage(client):
         ("orders", "null_rate"): 0.36,
         ("orders", "size_bytes"): 262144,
     }
-    with patch("app.dashboard.db.list_tables", return_value=fake_tables), \
-         patch("app.dashboard.get_latest_metric", side_effect=_latest_factory(metrics)), \
-         patch("app.dashboard.db.column_nulls") as mock_col_nulls, \
-         patch("app.dashboard.db.table_stats") as mock_stats:
+    with (
+        patch("app.dashboard.db.list_tables", return_value=fake_tables),
+        patch("app.dashboard.get_latest_metric", side_effect=_latest_factory(metrics)),
+        patch("app.dashboard.db.column_nulls") as mock_col_nulls,
+        patch("app.dashboard.db.table_stats") as mock_stats,
+    ):
         resp = client.get("/dashboard")
 
     assert resp.status_code == 200
@@ -147,8 +155,10 @@ def test_overview_renders_table_filter_input(client):
         {"table_name": "users", "schema": "public"},
         {"table_name": "orders", "schema": "public"},
     ]
-    with patch("app.dashboard.db.list_tables", return_value=fake_tables), \
-         patch("app.dashboard.get_latest_metric", return_value=None):
+    with (
+        patch("app.dashboard.db.list_tables", return_value=fake_tables),
+        patch("app.dashboard.get_latest_metric", return_value=None),
+    ):
         resp = client.get("/dashboard")
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
@@ -164,8 +174,13 @@ def test_overview_renders_table_filter_input(client):
 
 def test_overview_handles_no_collected_metrics(client):
     """Tables with no stored metrics still render — values show as em-dash placeholders."""
-    with patch("app.dashboard.db.list_tables", return_value=[{"table_name": "fresh", "schema": "public"}]), \
-         patch("app.dashboard.get_latest_metric", return_value=None):
+    with (
+        patch(
+            "app.dashboard.db.list_tables",
+            return_value=[{"table_name": "fresh", "schema": "public"}],
+        ),
+        patch("app.dashboard.get_latest_metric", return_value=None),
+    ):
         resp = client.get("/dashboard")
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
@@ -176,8 +191,10 @@ def test_overview_handles_no_collected_metrics(client):
 
 
 def test_overview_empty_when_no_tables(client):
-    with patch("app.dashboard.db.list_tables", return_value=[]), \
-         patch("app.dashboard.get_latest_metric", return_value=None):
+    with (
+        patch("app.dashboard.db.list_tables", return_value=[]),
+        patch("app.dashboard.get_latest_metric", return_value=None),
+    ):
         resp = client.get("/dashboard")
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
@@ -197,11 +214,13 @@ def test_table_detail_renders_from_storage_and_schema(client):
         {"name": "email", "type": "text", "nullable": True},
     ]
     null_counts = {"id": 0, "email": 75}  # 75/1500 = 5%
-    with patch("app.dashboard.db.list_tables", return_value=fake_tables), \
-         patch("app.dashboard.get_latest_metric", side_effect=_latest_factory(metrics)), \
-         patch("app.dashboard.get_latest_null_counts", return_value=null_counts), \
-         patch("app.dashboard.db.table_schema", return_value=cols), \
-         patch("app.dashboard.db.column_nulls") as mock_col_nulls:
+    with (
+        patch("app.dashboard.db.list_tables", return_value=fake_tables),
+        patch("app.dashboard.get_latest_metric", side_effect=_latest_factory(metrics)),
+        patch("app.dashboard.get_latest_null_counts", return_value=null_counts),
+        patch("app.dashboard.db.table_schema", return_value=cols),
+        patch("app.dashboard.db.column_nulls") as mock_col_nulls,
+    ):
         resp = client.get("/dashboard/schema/users")
 
     assert resp.status_code == 200
@@ -220,6 +239,7 @@ def test_table_detail_renders_from_storage_and_schema(client):
 # /dashboard/notifications  (#76)
 # ---------------------------------------------------------------------------
 
+
 def test_notifications_page_empty(client):
     resp = client.get("/dashboard/notifications")
     assert resp.status_code == 200
@@ -230,10 +250,21 @@ def test_notifications_page_empty(client):
 
 def test_notifications_page_lists_records(client):
     from app.metrics_storage import save_notification
-    save_notification(event_type="anomaly", message="орёл взлетел",
-                      status="sent", table_name="orders", metric_name="row_count")
-    save_notification(event_type="schema_drift", message="колонка добавлена",
-                      status="failed", table_name="users", error="boom")
+
+    save_notification(
+        event_type="anomaly",
+        message="орёл взлетел",
+        status="sent",
+        table_name="orders",
+        metric_name="row_count",
+    )
+    save_notification(
+        event_type="schema_drift",
+        message="колонка добавлена",
+        status="failed",
+        table_name="users",
+        error="boom",
+    )
 
     resp = client.get("/dashboard/notifications")
     assert resp.status_code == 200
@@ -246,10 +277,13 @@ def test_notifications_page_lists_records(client):
 
 def test_notifications_page_event_type_filter(client):
     from app.metrics_storage import save_notification
-    save_notification(event_type="anomaly", message="ANOMALY_MARKER_ZZZ",
-                      status="sent", table_name="orders")
-    save_notification(event_type="schema_drift", message="SCHEMA_MARKER_QQQ",
-                      status="sent", table_name="orders")
+
+    save_notification(
+        event_type="anomaly", message="ANOMALY_MARKER_ZZZ", status="sent", table_name="orders"
+    )
+    save_notification(
+        event_type="schema_drift", message="SCHEMA_MARKER_QQQ", status="sent", table_name="orders"
+    )
 
     resp = client.get("/dashboard/notifications?event_type=anomaly")
     assert resp.status_code == 200
@@ -267,7 +301,9 @@ def test_notifications_page_in_sidebar(client):
 
 
 def test_table_detail_404_when_not_listed(client):
-    with patch("app.dashboard.db.list_tables", return_value=[{"table_name": "users", "schema": "public"}]):
+    with patch(
+        "app.dashboard.db.list_tables", return_value=[{"table_name": "users", "schema": "public"}]
+    ):
         resp = client.get("/dashboard/schema/nonexistent")
     assert resp.status_code == 404
 
@@ -287,11 +323,13 @@ def test_schema_page_renders_from_information_schema(client):
             {"name": "amount", "type": "numeric", "nullable": False},
         ],
     }
-    with patch("app.dashboard.db.list_tables", return_value=fake_tables), \
-         patch("app.dashboard.db.table_schema", side_effect=lambda name, schema=None: schemas[name]), \
-         patch("app.dashboard.get_latest_metric", return_value=None), \
-         patch("app.dashboard.get_latest_null_counts", return_value={}), \
-         patch("app.dashboard.db.column_nulls") as mock_col_nulls:
+    with (
+        patch("app.dashboard.db.list_tables", return_value=fake_tables),
+        patch("app.dashboard.db.table_schema", side_effect=lambda name, schema=None: schemas[name]),
+        patch("app.dashboard.get_latest_metric", return_value=None),
+        patch("app.dashboard.get_latest_null_counts", return_value={}),
+        patch("app.dashboard.db.column_nulls") as mock_col_nulls,
+    ):
         resp = client.get("/dashboard/schema")
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
@@ -330,14 +368,16 @@ def test_project_overview_uses_connection_dsn_not_global_database_url(client):
     adapter = _FakeTenantAdapter()
     engine = _FakeEngine()
 
-    with patch(
-        "app.dashboard.db.list_tables",
-        side_effect=AssertionError("global DATABASE_URL list_tables leaked"),
-    ) as global_list, \
-         patch("app.dashboard.db.make_adapter_for_url", return_value=adapter) as make_adapter, \
-         patch("app.dashboard.create_engine", return_value=engine), \
-         patch("app.dashboard.get_latest_metric", return_value=None), \
-         patch("app.dashboard._ml_last_runs", return_value={}):
+    with (
+        patch(
+            "app.dashboard.db.list_tables",
+            side_effect=AssertionError("global DATABASE_URL list_tables leaked"),
+        ) as global_list,
+        patch("app.dashboard.db.make_adapter_for_url", return_value=adapter) as make_adapter,
+        patch("app.dashboard.create_engine", return_value=engine),
+        patch("app.dashboard.get_latest_metric", return_value=None),
+        patch("app.dashboard._ml_last_runs", return_value={}),
+    ):
         resp = client.get("/dashboard/")
 
     assert resp.status_code == 200
@@ -353,20 +393,27 @@ def test_project_table_detail_uses_connection_schema_not_global_database_url(cli
     _login_with_project_connection(client, email="detail@example.com")
     adapter = _FakeTenantAdapter()
 
-    with patch(
-        "app.dashboard.db.list_tables",
-        side_effect=AssertionError("global DATABASE_URL list_tables leaked"),
-    ) as global_list, \
-         patch(
-             "app.dashboard.db.table_schema",
-             side_effect=AssertionError("global DATABASE_URL table_schema leaked"),
-         ) as global_schema, \
-         patch("app.dashboard.db.make_adapter_for_url", return_value=adapter), \
-         patch("app.dashboard.create_engine", return_value=_FakeEngine()), \
-         patch("app.dashboard.get_latest_metric", side_effect=_latest_factory({
-             ("tenant_orders", "row_count"): 10,
-         })), \
-         patch("app.dashboard.get_latest_null_counts", return_value={"customer": 1}):
+    with (
+        patch(
+            "app.dashboard.db.list_tables",
+            side_effect=AssertionError("global DATABASE_URL list_tables leaked"),
+        ) as global_list,
+        patch(
+            "app.dashboard.db.table_schema",
+            side_effect=AssertionError("global DATABASE_URL table_schema leaked"),
+        ) as global_schema,
+        patch("app.dashboard.db.make_adapter_for_url", return_value=adapter),
+        patch("app.dashboard.create_engine", return_value=_FakeEngine()),
+        patch(
+            "app.dashboard.get_latest_metric",
+            side_effect=_latest_factory(
+                {
+                    ("tenant_orders", "row_count"): 10,
+                }
+            ),
+        ),
+        patch("app.dashboard.get_latest_null_counts", return_value={"customer": 1}),
+    ):
         resp = client.get("/dashboard/schema/tenant_orders")
 
     assert resp.status_code == 200
@@ -385,12 +432,14 @@ def test_project_overview_bad_connection_does_not_fallback_to_global_database_ur
         dsn="unknown://u:p@broken-host/db",
     )
 
-    with patch(
-        "app.dashboard.db.list_tables",
-        side_effect=AssertionError("global DATABASE_URL list_tables leaked"),
-    ) as global_list, \
-         patch("app.dashboard.get_latest_metric", return_value=None), \
-         patch("app.dashboard._ml_last_runs", return_value={}):
+    with (
+        patch(
+            "app.dashboard.db.list_tables",
+            side_effect=AssertionError("global DATABASE_URL list_tables leaked"),
+        ) as global_list,
+        patch("app.dashboard.get_latest_metric", return_value=None),
+        patch("app.dashboard._ml_last_runs", return_value={}),
+    ):
         resp = client.get("/dashboard/")
 
     assert resp.status_code == 200
@@ -414,6 +463,7 @@ def test_healthz_still_works(client):
 # ---------------------------------------------------------------------------
 # _fmt_iso_in_text Jinja2 filter (#89)
 # ---------------------------------------------------------------------------
+
 
 def test_fmt_iso_in_text_single_timestamp():
     result = _fmt_iso_in_text("аномалия в 2026-05-12T09:21:00+00:00 обнаружена")
@@ -454,6 +504,7 @@ def test_fmt_iso_in_text_empty_string():
 # Overview: last_check rendered as 'YYYY-MM-DD HH:MM UTC' (#89)
 # ---------------------------------------------------------------------------
 
+
 def test_overview_last_check_formatted(client):
     fake_tables = [{"table_name": "users", "schema": "public"}]
     metrics = {
@@ -461,8 +512,10 @@ def test_overview_last_check_formatted(client):
         ("users", "null_rate"): 0.01,
         ("users", "size_bytes"): 32768,
     }
-    with patch("app.dashboard.db.list_tables", return_value=fake_tables), \
-         patch("app.dashboard.get_latest_metric", side_effect=_latest_factory(metrics)):
+    with (
+        patch("app.dashboard.db.list_tables", return_value=fake_tables),
+        patch("app.dashboard.get_latest_metric", side_effect=_latest_factory(metrics)),
+    ):
         resp = client.get("/dashboard")
 
     body = resp.get_data(as_text=True)
@@ -474,14 +527,15 @@ def test_overview_last_check_formatted(client):
 # Notifications: ISO timestamps in message body replaced on render (#89)
 # ---------------------------------------------------------------------------
 
+
 def test_notifications_iso_timestamps_in_body_are_formatted(client):
     from app.metrics_storage import save_notification
+
     raw_msg = (
         "Изменение row_count с 3145 до 4995 "
         "(с 2026-05-12T09:21:00+00:00 до 2026-05-12T10:21:00+00:00)"
     )
-    save_notification(event_type="anomaly", message=raw_msg,
-                      status="sent", table_name="users")
+    save_notification(event_type="anomaly", message=raw_msg, status="sent", table_name="users")
 
     resp = client.get("/dashboard/notifications")
     body = resp.get_data(as_text=True)
@@ -495,16 +549,20 @@ def test_notifications_iso_timestamps_in_body_are_formatted(client):
 
 def test_overview_survives_list_tables_exception(client):
     """overview() returns 200 even when db.list_tables() raises — no 500."""
-    with patch("app.dashboard.db.list_tables", side_effect=Exception("DB unreachable")), \
-         patch("app.dashboard.get_latest_metric", return_value=None):
+    with (
+        patch("app.dashboard.db.list_tables", side_effect=Exception("DB unreachable")),
+        patch("app.dashboard.get_latest_metric", return_value=None),
+    ):
         resp = client.get("/dashboard")
     assert resp.status_code == 200
 
 
 def test_schema_view_survives_list_tables_exception(client):
     """schema_view() returns 200 even when db.list_tables() raises — no 500."""
-    with patch("app.dashboard.db.list_tables", side_effect=Exception("DB unreachable")), \
-         patch("app.dashboard.get_latest_metric", return_value=None):
+    with (
+        patch("app.dashboard.db.list_tables", side_effect=Exception("DB unreachable")),
+        patch("app.dashboard.get_latest_metric", return_value=None),
+    ):
         resp = client.get("/dashboard/schema")
     assert resp.status_code == 200
 
@@ -519,6 +577,7 @@ def logged_in_no_project_client(tmp_path, monkeypatch):
     """Client logged in as a user who has NO projects (simulates deleted-project state)."""
     db_path = tmp_path / "monitor.db"
     import app.metrics_storage as storage
+
     monkeypatch.setattr(storage.settings, "MONITOR_DB_URL", f"sqlite:///{db_path}")
     monkeypatch.setattr(storage, "_engine", None)
     monkeypatch.setattr(storage, "_initialized", False)
@@ -527,16 +586,20 @@ def logged_in_no_project_client(tmp_path, monkeypatch):
     with app.test_client() as c:
         # Register + immediately delete the auto-created default project so the
         # user is left authenticated but with zero projects.
-        c.post("/auth/register", data={
-            "email": "noproj@example.com",
-            "password": "supersecret1",
-            "confirm": "supersecret1",
-        })
+        c.post(
+            "/auth/register",
+            data={
+                "email": "noproj@example.com",
+                "password": "supersecret1",
+                "confirm": "supersecret1",
+            },
+        )
         from app.metrics_storage import (
             delete_project,
             get_user_by_email,
             list_projects_for_user,
         )
+
         user = get_user_by_email("noproj@example.com")
         for p in list_projects_for_user(user["id"]):
             delete_project(user["id"], p["id"])
@@ -545,8 +608,10 @@ def logged_in_no_project_client(tmp_path, monkeypatch):
 
 def test_overview_no_project_skips_list_tables(logged_in_no_project_client):
     """overview() must not call db.list_tables() when the user has no projects."""
-    with patch("app.dashboard.db.list_tables") as mock_list, \
-         patch("app.dashboard._ml_last_runs") as mock_ml:
+    with (
+        patch("app.dashboard.db.list_tables") as mock_list,
+        patch("app.dashboard._ml_last_runs") as mock_ml,
+    ):
         resp = logged_in_no_project_client.get("/dashboard")
     assert resp.status_code == 200
     mock_list.assert_not_called()
@@ -575,9 +640,11 @@ def test_history_no_project_redirects_to_new_project(logged_in_no_project_client
 def test_notifications_no_project_shows_empty(logged_in_no_project_client):
     """notifications_view() shows empty list (not legacy data) when user has no projects."""
     from app.metrics_storage import save_notification
+
     # Write a notification with legacy project_id — must NOT appear.
-    save_notification(event_type="anomaly", message="LEGACY_MARKER",
-                      status="sent", project_id="legacy")
+    save_notification(
+        event_type="anomaly", message="LEGACY_MARKER", status="sent", project_id="legacy"
+    )
 
     resp = logged_in_no_project_client.get("/dashboard/notifications")
     assert resp.status_code == 200
@@ -589,6 +656,7 @@ def test_notifications_no_project_shows_empty(logged_in_no_project_client):
 def test_delete_project_cascades_notifications(tmp_path, monkeypatch):
     """delete_project() removes the project's notifications but not other projects'."""
     import app.metrics_storage as storage
+
     db_path = tmp_path / "cascade.db"
     monkeypatch.setattr(storage.settings, "MONITOR_DB_URL", f"sqlite:///{db_path}")
     monkeypatch.setattr(storage, "_engine", None)
@@ -607,10 +675,8 @@ def test_delete_project_cascades_notifications(tmp_path, monkeypatch):
     proj_a = create_project("proj-a", user["id"], "A", "proj-a")
     proj_b = create_project("proj-b", user["id"], "B", "proj-b")
 
-    save_notification(event_type="anomaly", message="A_MSG",
-                      status="sent", project_id=proj_a["id"])
-    save_notification(event_type="anomaly", message="B_MSG",
-                      status="sent", project_id=proj_b["id"])
+    save_notification(event_type="anomaly", message="A_MSG", status="sent", project_id=proj_a["id"])
+    save_notification(event_type="anomaly", message="B_MSG", status="sent", project_id=proj_b["id"])
 
     delete_project(user["id"], proj_a["id"])
 
@@ -623,6 +689,7 @@ def test_delete_project_cascades_notifications(tmp_path, monkeypatch):
 def test_delete_project_cascades_metrics(tmp_path, monkeypatch):
     """delete_project() removes the project's metrics but not other projects'."""
     import app.metrics_storage as storage
+
     db_path = tmp_path / "cascade_metrics.db"
     monkeypatch.setattr(storage.settings, "MONITOR_DB_URL", f"sqlite:///{db_path}")
     monkeypatch.setattr(storage, "_engine", None)
@@ -643,8 +710,12 @@ def test_delete_project_cascades_metrics(tmp_path, monkeypatch):
     proj_b = create_project("proj-metrics-b", user["id"], "B", "proj-metrics-b")
 
     ts = datetime.now(UTC)
-    save_metrics([{"ts": ts, "table_name": "orders", "metric_name": "row_count", "value": 100}], proj_a["id"])
-    save_metrics([{"ts": ts, "table_name": "orders", "metric_name": "row_count", "value": 200}], proj_b["id"])
+    save_metrics(
+        [{"ts": ts, "table_name": "orders", "metric_name": "row_count", "value": 100}], proj_a["id"]
+    )
+    save_metrics(
+        [{"ts": ts, "table_name": "orders", "metric_name": "row_count", "value": 200}], proj_b["id"]
+    )
 
     delete_project(user["id"], proj_a["id"])
 

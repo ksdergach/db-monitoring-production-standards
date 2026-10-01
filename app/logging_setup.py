@@ -24,10 +24,29 @@ from datetime import UTC, datetime
 # harvesting "extra" fields supplied via logger.info(..., extra={...}),
 # otherwise the JSON payload would balloon with framework noise.
 _STANDARD_RECORD_ATTRS = {
-    "name", "msg", "args", "levelname", "levelno", "pathname", "filename",
-    "module", "exc_info", "exc_text", "stack_info", "lineno", "funcName",
-    "created", "msecs", "relativeCreated", "thread", "threadName",
-    "processName", "process", "taskName", "message", "asctime",
+    "name",
+    "msg",
+    "args",
+    "levelname",
+    "levelno",
+    "pathname",
+    "filename",
+    "module",
+    "exc_info",
+    "exc_text",
+    "stack_info",
+    "lineno",
+    "funcName",
+    "created",
+    "msecs",
+    "relativeCreated",
+    "thread",
+    "threadName",
+    "processName",
+    "process",
+    "taskName",
+    "message",
+    "asctime",
 }
 
 
@@ -46,8 +65,7 @@ class JsonFormatter(logging.Formatter):
         # rendered string can never resurrect a plaintext DSN here.
         payload: dict = {
             "timestamp": (
-                datetime.fromtimestamp(record.created, tz=UTC)
-                .isoformat(timespec="milliseconds")
+                datetime.fromtimestamp(record.created, tz=UTC).isoformat(timespec="milliseconds")
             ),
             "level": record.levelname,
             "logger": record.name,
@@ -110,9 +128,7 @@ def configure_logging(log_format: str, level: str = "INFO") -> None:
     if log_format.lower() == "json":
         handler.setFormatter(JsonFormatter())
     else:
-        handler.setFormatter(logging.Formatter(
-            "%(asctime)s %(levelname)s %(name)s: %(message)s"
-        ))
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
     root.addHandler(handler)
 
 

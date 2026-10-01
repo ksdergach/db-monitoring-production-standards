@@ -104,9 +104,7 @@ def test_anomaly_multiplier_one_tick_per_anchor():
     # На реальной длине окна (336 тиков = 14дн × 24) каждый якорь должен
     # затронуть ровно один тик.
     n = 336
-    hits = sum(
-        1 for i in range(n) if _anomaly_multiplier(i / (n - 1), n) != 1.0
-    )
+    hits = sum(1 for i in range(n) if _anomaly_multiplier(i / (n - 1), n) != 1.0)
     assert hits == len(ANOMALY_POINTS)
 
 
@@ -186,8 +184,9 @@ def test_drift_factor_monotonic_after_onset():
 def test_categorical_buckets_baseline_when_no_drift():
     out = _categorical_buckets(progress=1.0, drift_amount=0.0)
     weights = [b["count"] for b in out]
-    expected_total = sum(round(w / sum(CATEGORICAL_BASELINE_WEIGHTS) * 1000)
-                         for w in CATEGORICAL_BASELINE_WEIGHTS)
+    expected_total = sum(
+        round(w / sum(CATEGORICAL_BASELINE_WEIGHTS) * 1000) for w in CATEGORICAL_BASELINE_WEIGHTS
+    )
     assert sum(weights) == expected_total
     # Бакеты соответствуют именам.
     assert [b["value"] for b in out] == list(CATEGORICAL_BUCKETS)
@@ -207,7 +206,9 @@ def test_numeric_buckets_count_and_drift():
     assert len(base) == NUMERIC_BUCKETS
     # Среднее распределения должно сместиться вправо.
     base_centroid = sum(b["value"] * b["count"] for b in base) / sum(b["count"] for b in base)
-    drift_centroid = sum(b["value"] * b["count"] for b in drifted) / sum(b["count"] for b in drifted)
+    drift_centroid = sum(b["value"] * b["count"] for b in drifted) / sum(
+        b["count"] for b in drifted
+    )
     assert NUMERIC_BASELINE_MEAN - 1.0 <= base_centroid <= NUMERIC_BASELINE_MEAN + 1.0
     assert drift_centroid > base_centroid + 10  # ушло заметно правее
 
@@ -236,7 +237,11 @@ def test_generate_metric_rows_metric_set_per_tick():
 
     first_tick = [r for r in rows if r["ts"] == ts[0]]
     assert {r["metric_name"] for r in first_tick} == {
-        "row_count", "size_bytes", "last_modified", "null_count", "null_rate",
+        "row_count",
+        "size_bytes",
+        "last_modified",
+        "null_count",
+        "null_rate",
     }
 
 
@@ -279,11 +284,13 @@ def test_generate_metric_rows_step_regression_for_high_null_column():
 
     null_counts = [r for r in rows if r["metric_name"] == "null_count"]
     early_rc = next(
-        r["value"] for r in rows
+        r["value"]
+        for r in rows
         if r["metric_name"] == "row_count" and r["ts"] == null_counts[0]["ts"]
     )
     late_rc = next(
-        r["value"] for r in rows
+        r["value"]
+        for r in rows
         if r["metric_name"] == "row_count" and r["ts"] == null_counts[-1]["ts"]
     )
     assert null_counts[0]["value"] == pytest.approx(early_rc * BASELINE_NULL_RATE, rel=0.05)
@@ -308,9 +315,19 @@ def test_generate_metric_rows_regression_window_matches_days():
     spike_ts = ts[round(NULL_SPIKE_PROGRESS * (n - 1))] if n > 1 else None
 
     rates = sorted(
-        ((r["ts"], r["value"], next(
-            x["value"] for x in rows if x["metric_name"] == "row_count" and x["ts"] == r["ts"]
-        )) for r in rows if r["metric_name"] == "null_count"),
+        (
+            (
+                r["ts"],
+                r["value"],
+                next(
+                    x["value"]
+                    for x in rows
+                    if x["metric_name"] == "row_count" and x["ts"] == r["ts"]
+                ),
+            )
+            for r in rows
+            if r["metric_name"] == "null_count"
+        ),
         key=lambda x: x[0],
     )
     cutoff = end - timedelta(days=REGRESSION_DAYS)
@@ -461,19 +478,20 @@ def stub_target(monkeypatch):
     def _stub(tables: dict[str, dict]):
         monkeypatch.setattr(
             "scripts.seed_metrics_db.target_db.list_tables",
-            lambda schema=None: [
-                {"table_name": name, "schema": "public"} for name in tables
-            ],
+            lambda schema=None: [{"table_name": name, "schema": "public"} for name in tables],
         )
         monkeypatch.setattr(
             "scripts.seed_metrics_db.target_db.table_stats",
             lambda name, schema=None: (
                 {
-                    "table_name": name, "schema": "public",
+                    "table_name": name,
+                    "schema": "public",
                     "row_count": tables[name]["row_count"],
                     "size_bytes": tables[name]["size_bytes"],
                     "last_analyze": None,
-                } if name in tables else None
+                }
+                if name in tables
+                else None
             ),
         )
         monkeypatch.setattr(
@@ -485,14 +503,17 @@ def stub_target(monkeypatch):
 
 
 def test_main_writes_metrics_and_distributions(monitor_storage, stub_target):
-    stub_target({
-        "users": {
-            "row_count": 1000, "size_bytes": 200_000,
-            "columns": [
-                {"column": "email", "data_type": "text", "null_count": 50, "null_rate": 0.05},
-            ],
-        },
-    })
+    stub_target(
+        {
+            "users": {
+                "row_count": 1000,
+                "size_bytes": 200_000,
+                "columns": [
+                    {"column": "email", "data_type": "text", "null_count": 50, "null_rate": 0.05},
+                ],
+            },
+        }
+    )
 
     days = 2
     interval_minutes = 60
@@ -506,6 +527,7 @@ def test_main_writes_metrics_and_distributions(monitor_storage, stub_target):
     # users есть в SCHEMA_EVENT_PROFILES → 1 schema-event ожидается.
     # NOTIFICATION_PROFILES — фиксированный набор, не зависит от таблиц в target.
     from scripts.seed_metrics_db import NOTIFICATION_PROFILES
+
     assert result == {
         "snapshots": 1,
         "rows": n_ticks * per_tick_rows + distribution_rows,
@@ -518,9 +540,7 @@ def test_main_writes_metrics_and_distributions(monitor_storage, stub_target):
     with monitor_storage.get_engine().connect() as conn:
         n = conn.execute(text("SELECT COUNT(*) FROM metrics")).scalar()
         kinds = {
-            r[0] for r in conn.execute(
-                text("SELECT DISTINCT metric_name FROM metrics")
-            ).fetchall()
+            r[0] for r in conn.execute(text("SELECT DISTINCT metric_name FROM metrics")).fetchall()
         }
         n_events = conn.execute(
             text("SELECT COUNT(*) FROM schema_events WHERE table_name = 'users'")
@@ -531,14 +551,23 @@ def test_main_writes_metrics_and_distributions(monitor_storage, stub_target):
 
 
 def test_main_reset_purges_existing_rows(monitor_storage, stub_target):
-    monitor_storage.save_metrics([{
-        "ts": datetime.now(UTC), "table_name": "stale",
-        "metric_name": "row_count", "value": 1,
-    }], "legacy")
+    monitor_storage.save_metrics(
+        [
+            {
+                "ts": datetime.now(UTC),
+                "table_name": "stale",
+                "metric_name": "row_count",
+                "value": 1,
+            }
+        ],
+        "legacy",
+    )
 
-    stub_target({
-        "users": {"row_count": 100, "size_bytes": 10_000, "columns": []},
-    })
+    stub_target(
+        {
+            "users": {"row_count": 100, "size_bytes": 10_000, "columns": []},
+        }
+    )
 
     result = main(days=1, interval_minutes=60, reset=True)
     assert result["deleted"] >= 1
@@ -556,37 +585,72 @@ def test_main_reset_purges_derived_tables(monitor_storage, stub_target):
     зависают точки от прошлых прогонов с несовпадающими ts."""
     now = datetime.now(UTC)
 
-    monitor_storage.save_anomaly_scores([
-        {"ts": now, "table_name": "stale", "score": -0.5, "is_anomaly": 1},
-    ])
-    monitor_storage.save_changepoints([{
-        "ts": now, "table_name": "stale", "metric_name": "row_count",
-        "score": 5.0, "value_before": 100, "value_after": 200,
-    }])
-    monitor_storage.save_drift_reports("stale", [{
-        "column": "x", "data_type": "varchar", "psi": 0.4,
-        "ks_pvalue": None, "is_drift": True, "severity": "critical",
-    }])
-    monitor_storage.save_schema_events([{
-        "ts": now, "table_name": "stale", "change_type": "column_added",
-        "column_name": "y", "details": {"after": {"name": "y", "type": "text"}},
-    }])
+    monitor_storage.save_anomaly_scores(
+        [
+            {"ts": now, "table_name": "stale", "score": -0.5, "is_anomaly": 1},
+        ]
+    )
+    monitor_storage.save_changepoints(
+        [
+            {
+                "ts": now,
+                "table_name": "stale",
+                "metric_name": "row_count",
+                "score": 5.0,
+                "value_before": 100,
+                "value_after": 200,
+            }
+        ]
+    )
+    monitor_storage.save_drift_reports(
+        "stale",
+        [
+            {
+                "column": "x",
+                "data_type": "varchar",
+                "psi": 0.4,
+                "ks_pvalue": None,
+                "is_drift": True,
+                "severity": "critical",
+            }
+        ],
+    )
+    monitor_storage.save_schema_events(
+        [
+            {
+                "ts": now,
+                "table_name": "stale",
+                "change_type": "column_added",
+                "column_name": "y",
+                "details": {"after": {"name": "y", "type": "text"}},
+            }
+        ]
+    )
     monitor_storage.save_schema_snapshot("stale", [{"name": "x", "type": "text", "nullable": True}])
     monitor_storage.save_notification(
-        event_type="anomaly", message="stale alert", status="sent",
-        table_name="stale", chat_id="old",
+        event_type="anomaly",
+        message="stale alert",
+        status="sent",
+        table_name="stale",
+        chat_id="old",
     )
 
-    stub_target({
-        "users": {"row_count": 100, "size_bytes": 10_000, "columns": []},
-    })
+    stub_target(
+        {
+            "users": {"row_count": 100, "size_bytes": 10_000, "columns": []},
+        }
+    )
 
     main(days=1, interval_minutes=60, reset=True)
 
     with monitor_storage.get_engine().connect() as conn:
         for tbl in (
-            "anomaly_scores", "changepoints", "drift_reports",
-            "schema_events", "schema_snapshots", "notifications",
+            "anomaly_scores",
+            "changepoints",
+            "drift_reports",
+            "schema_events",
+            "schema_snapshots",
+            "notifications",
         ):
             n = conn.execute(
                 text(f"SELECT COUNT(*) FROM {tbl} WHERE table_name = 'stale'")
@@ -603,11 +667,15 @@ def test_main_no_tables_returns_zero(monitor_storage, monkeypatch):
     # No snapshots → early return without notifications either (мониторим
     # только то, что реально есть в target DB).
     assert main(days=1, interval_minutes=60) == {
-        "snapshots": 0, "rows": 0, "deleted": 0, "ticks": 0,
+        "snapshots": 0,
+        "rows": 0,
+        "deleted": 0,
+        "ticks": 0,
     }
 
 
 # --- #138: project_id scoping ---
+
 
 def test_main_writes_metrics_with_project_id(monitor_storage, stub_target):
     """main(..., project_id='proj-a') сохраняет метрики с project_id='proj-a'."""
@@ -616,9 +684,7 @@ def test_main_writes_metrics_with_project_id(monitor_storage, stub_target):
     main(days=1, interval_minutes=60, project_id="proj-a")
 
     with monitor_storage.get_engine().connect() as conn:
-        n = conn.execute(
-            text("SELECT COUNT(*) FROM metrics WHERE project_id = 'proj-a'")
-        ).scalar()
+        n = conn.execute(text("SELECT COUNT(*) FROM metrics WHERE project_id = 'proj-a'")).scalar()
     assert n > 0
 
 
@@ -642,19 +708,41 @@ def test_reset_scoped_leaves_other_project_metrics(monitor_storage, stub_target)
     """--reset с project_id='proj-a' удаляет только proj-a из metrics/notifications,
     не трогая proj-b."""
     now = datetime.now(UTC)
-    monitor_storage.save_metrics([{
-        "ts": now, "table_name": "t", "metric_name": "row_count", "value": 1,
-    }], "proj-a")
-    monitor_storage.save_metrics([{
-        "ts": now, "table_name": "t", "metric_name": "row_count", "value": 2,
-    }], "proj-b")
-    monitor_storage.save_notification(
-        event_type="anomaly", message="a", status="sent",
-        table_name="t", project_id="proj-a",
+    monitor_storage.save_metrics(
+        [
+            {
+                "ts": now,
+                "table_name": "t",
+                "metric_name": "row_count",
+                "value": 1,
+            }
+        ],
+        "proj-a",
+    )
+    monitor_storage.save_metrics(
+        [
+            {
+                "ts": now,
+                "table_name": "t",
+                "metric_name": "row_count",
+                "value": 2,
+            }
+        ],
+        "proj-b",
     )
     monitor_storage.save_notification(
-        event_type="anomaly", message="b", status="sent",
-        table_name="t", project_id="proj-b",
+        event_type="anomaly",
+        message="a",
+        status="sent",
+        table_name="t",
+        project_id="proj-a",
+    )
+    monitor_storage.save_notification(
+        event_type="anomaly",
+        message="b",
+        status="sent",
+        table_name="t",
+        project_id="proj-b",
     )
 
     stub_target({"users": {"row_count": 100, "size_bytes": 10_000, "columns": []}})
@@ -684,9 +772,11 @@ def test_reset_scoped_leaves_other_project_metrics(monitor_storage, stub_target)
 def test_seed_cli_help_contains_project_id():
     """--help содержит --project-id."""
     import subprocess
+
     result = subprocess.run(
         ["python", "-m", "scripts.seed_metrics_db", "--help"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     assert "--project-id" in result.stdout
 
@@ -701,9 +791,11 @@ def test_main_seeds_notifications_with_mixed_statuses(monitor_storage, stub_targ
     from app.metrics_storage import count_notifications, get_notifications
     from scripts.seed_metrics_db import NOTIFICATION_PROFILES
 
-    stub_target({
-        "users": {"row_count": 100, "size_bytes": 10_000, "columns": []},
-    })
+    stub_target(
+        {
+            "users": {"row_count": 100, "size_bytes": 10_000, "columns": []},
+        }
+    )
 
     result = main(days=14, interval_minutes=60, reset=True)
     assert result["notifications"] == len(NOTIFICATION_PROFILES)
@@ -757,9 +849,7 @@ def test_profile_is_append_only_with_three_steps_in_last_7_days(table):
     # окне 14 дней → 72 / (14·24) ≈ 0.2143 в единицах прогресса.
     min_gap = 72 / (14 * 24)
     gaps = [b - a for a, b in pairwise(progresses)]
-    assert all(gap > min_gap for gap in gaps), (
-        f"{table}: соседние ступеньки слишком близко: {gaps}"
-    )
+    assert all(gap > min_gap for gap in gaps), f"{table}: соседние ступеньки слишком близко: {gaps}"
 
 
 def test_events_row_count_macro_monotonic_with_steps():
@@ -770,9 +860,7 @@ def test_events_row_count_macro_monotonic_with_steps():
     snap = _snapshot(name="events", row_count=80_000, size_bytes=8_000_000, cols=[])
     rows = _generate_metric_rows(snap, ts, random.Random(0), days=14)
     rc = [r["value"] for r in rows if r["metric_name"] == "row_count"]
-    max_drop = max(
-        (prev - cur for prev, cur in pairwise(rc) if cur < prev), default=0
-    )
+    max_drop = max((prev - cur for prev, cur in pairwise(rc) if cur < prev), default=0)
     assert max_drop < 0.005 * snap.row_count
 
 
@@ -817,9 +905,7 @@ def test_events_row_count_scales_steps_when_current_too_small():
     # финал ≈ current
     assert 0.99 * snap.row_count <= rc[-1] <= 1.01 * snap.row_count
     # никаких заметных провалов
-    max_drop = max(
-        (prev - cur for prev, cur in pairwise(rc) if cur < prev), default=0
-    )
+    max_drop = max((prev - cur for prev, cur in pairwise(rc) if cur < prev), default=0)
     assert max_drop < 0.005 * snap.row_count
 
 
@@ -830,17 +916,18 @@ def test_orders_row_count_macro_monotonic():
     rows = _generate_metric_rows(snap, ts, random.Random(0), days=14)
 
     rc = [r["value"] for r in rows if r["metric_name"] == "row_count"]
-    max_drop = max(
-        (prev - cur for prev, cur in pairwise(rc) if cur < prev), default=0
-    )
+    max_drop = max((prev - cur for prev, cur in pairwise(rc) if cur < prev), default=0)
     assert max_drop < 0.005 * snap.row_count
 
 
-@pytest.mark.parametrize("table,row_count", [
-    ("users", 80_000),
-    ("products", 80_000),
-    ("orders", 80_000),
-])
+@pytest.mark.parametrize(
+    "table,row_count",
+    [
+        ("users", 80_000),
+        ("products", 80_000),
+        ("orders", 80_000),
+    ],
+)
 def test_table_row_count_macro_monotonic_with_three_steps(table, row_count):
     """users/products/orders: серия только растёт (без дипов), три крупных
     положительных Δrow_count в правой половине окна — эти три точки
@@ -852,9 +939,7 @@ def test_table_row_count_macro_monotonic_with_three_steps(table, row_count):
 
     rc = [r["value"] for r in rows if r["metric_name"] == "row_count"]
     # Никаких дипов вниз.
-    max_drop = max(
-        (prev - cur for prev, cur in pairwise(rc) if cur < prev), default=0
-    )
+    max_drop = max((prev - cur for prev, cur in pairwise(rc) if cur < prev), default=0)
     assert max_drop < 0.005 * snap.row_count
 
     # Ровно три «больших» Δ в правой половине окна (последние 7 дней).
@@ -878,9 +963,15 @@ def test_main_skips_table_when_stats_missing(monitor_storage, monkeypatch):
     monkeypatch.setattr(
         "scripts.seed_metrics_db.target_db.table_stats",
         lambda name, schema=None: (
-            {"table_name": name, "schema": "public", "row_count": 100,
-             "size_bytes": 10_000, "last_analyze": None}
-            if name == "real" else None
+            {
+                "table_name": name,
+                "schema": "public",
+                "row_count": 100,
+                "size_bytes": 10_000,
+                "last_analyze": None,
+            }
+            if name == "real"
+            else None
         ),
     )
     monkeypatch.setattr(

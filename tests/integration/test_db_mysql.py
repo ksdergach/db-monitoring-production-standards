@@ -30,7 +30,7 @@ def _to_pymysql(url: str) -> str:
     """
     for prefix in ("mysql+mysqldb://", "mysql+mysqlconnector://", "mysql://"):
         if url.startswith(prefix):
-            return "mysql+pymysql://" + url[len(prefix):]
+            return "mysql+pymysql://" + url[len(prefix) :]
     return url
 
 
@@ -54,20 +54,24 @@ def mysql_schema(mysql_container) -> str:
 def _seed(mysql_container):
     engine = create_engine(_to_pymysql(mysql_container.get_connection_url()), future=True)
     with engine.begin() as conn:
-        conn.execute(text("""
+        conn.execute(
+            text("""
             CREATE TABLE users (
                 id      INT AUTO_INCREMENT PRIMARY KEY,
                 email   VARCHAR(255),
                 country VARCHAR(8) NOT NULL
             )
-        """))
-        conn.execute(text("""
+        """)
+        )
+        conn.execute(
+            text("""
             INSERT INTO users (email, country) VALUES
                 ('a@x.io', 'RU'),
                 (NULL,     'US'),
                 ('c@x.io', 'RU'),
                 (NULL,     'DE')
-        """))
+        """)
+        )
         # information_schema.tables.table_rows is filled by ANALYZE on InnoDB.
         conn.execute(text("ANALYZE TABLE users"))
     engine.dispose()
@@ -76,6 +80,7 @@ def _seed(mysql_container):
 def test_list_tables_returns_seeded_table(mysql_url, mysql_schema):
     with use_target_db(mysql_url):
         from app.db import list_tables
+
         tables = list_tables(schema=mysql_schema)
     names = [t["table_name"] for t in tables]
     assert "users" in names
@@ -84,6 +89,7 @@ def test_list_tables_returns_seeded_table(mysql_url, mysql_schema):
 def test_table_stats_reports_row_count_and_size(mysql_url, mysql_schema):
     with use_target_db(mysql_url):
         from app.db import table_stats
+
         stats = table_stats("users", schema=mysql_schema)
     assert stats is not None
     assert stats["table_name"] == "users"
@@ -96,12 +102,14 @@ def test_table_stats_reports_row_count_and_size(mysql_url, mysql_schema):
 def test_table_stats_returns_none_for_missing_table(mysql_url, mysql_schema):
     with use_target_db(mysql_url):
         from app.db import table_stats
+
         assert table_stats("does_not_exist", schema=mysql_schema) is None
 
 
 def test_table_schema_returns_columns_with_nullability(mysql_url, mysql_schema):
     with use_target_db(mysql_url):
         from app.db import table_schema
+
         cols = table_schema("users", schema=mysql_schema)
     by_name = {c["name"]: c for c in cols}
     assert by_name["id"]["nullable"] is False
@@ -112,6 +120,7 @@ def test_table_schema_returns_columns_with_nullability(mysql_url, mysql_schema):
 def test_column_nulls_counts_email_nulls(mysql_url, mysql_schema):
     with use_target_db(mysql_url):
         from app.db import column_nulls
+
         cols = column_nulls("users", schema=mysql_schema)
     by_name = {c["column"]: c for c in cols}
     assert by_name["email"]["null_count"] == 2
