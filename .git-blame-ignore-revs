@@ -1,0 +1,6 @@
+# Formatting-only commits: `git blame` skips them.
+# GitHub reads this file automatically. Locally, enable it once with:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# ruff format applied to the whole codebase (#3)
+8a98823271403c39f8ee976d09c03427f69281d3
