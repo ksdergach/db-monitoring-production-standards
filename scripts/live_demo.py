@@ -81,7 +81,9 @@ def _generate_event_row(user_ids: list[str], incident: bool) -> dict:
         "event_type": random.choices(_EVENT_TYPES, weights=_EVENT_WEIGHTS, k=1)[0],
         "duration_ms": random.randint(50, 5_000),
         "events_in_session": random.randint(1, 30),
-        "ip_address": None if random.random() < null_rate else f"10.0.{random.randint(0, 255)}.{random.randint(0, 255)}",
+        "ip_address": None
+        if random.random() < null_rate
+        else f"10.0.{random.randint(0, 255)}.{random.randint(0, 255)}",
         "ip_events_last_1h": random.randint(0, 50),
         "server_id": random.choices(_SERVER_IDS, weights=server_weights, k=1)[0],
         "device_type": random.choice(_DEVICE_TYPES),
@@ -116,15 +118,18 @@ def _run_collector_tick(project_id: str, connection_id: str | None) -> int:
     """
     if connection_id:
         from collectors.per_project import collect_for_connection
+
         collect_for_connection(project_id, connection_id)
         metric_project_id = project_id
     else:
         from collectors.scheduler import collect_all_tables
+
         collect_all_tables()
         # Global collector writes to 'legacy' regardless of project_id arg.
         metric_project_id = "legacy"
 
     from app.metrics_storage import get_latest_metric
+
     latest = get_latest_metric("events", "row_count", metric_project_id)
     return int(latest["value"]) if latest else 0
 
@@ -134,6 +139,7 @@ def _run_changepoint_pass(project_id: str) -> dict:
     dashed lines update during the demo (the scheduled job runs hourly —
     too slow for a live walk-through)."""
     from ml.changepoint import detect_all
+
     return detect_all(project_id=project_id)
 
 
@@ -151,6 +157,7 @@ def _install_sigint_handler() -> None:
     def _bye(_signum, _frame):
         logger.info("Stopping live demo (SIGINT)")
         sys.exit(0)
+
     signal.signal(signal.SIGINT, _bye)
 
 
@@ -159,26 +166,41 @@ def main() -> None:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--ticks", type=int, default=None,
-                        help="Stop after N ticks (default: run until Ctrl-C).")
-    parser.add_argument("--interval", type=float, default=10.0,
-                        help="Seconds between ticks (default: 10).")
-    parser.add_argument("--rows-per-tick", type=int, default=_BASE_ROWS_PER_TICK,
-                        help=f"Normal-traffic batch size (default: {_BASE_ROWS_PER_TICK}).")
-    parser.add_argument("--incident-at", type=int, default=None, metavar="TICK",
-                        help="Inject a synthetic incident on this tick "
-                             "(10× rows, 40%% ip_address NULL, server-3 skew).")
-    parser.add_argument("--changepoints", action="store_true",
-                        help="Also run change-point detection on every tick.")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Print plan and exit without touching the DB.")
+    parser.add_argument(
+        "--ticks", type=int, default=None, help="Stop after N ticks (default: run until Ctrl-C)."
+    )
+    parser.add_argument(
+        "--interval", type=float, default=10.0, help="Seconds between ticks (default: 10)."
+    )
+    parser.add_argument(
+        "--rows-per-tick",
+        type=int,
+        default=_BASE_ROWS_PER_TICK,
+        help=f"Normal-traffic batch size (default: {_BASE_ROWS_PER_TICK}).",
+    )
+    parser.add_argument(
+        "--incident-at",
+        type=int,
+        default=None,
+        metavar="TICK",
+        help="Inject a synthetic incident on this tick "
+        "(10× rows, 40%% ip_address NULL, server-3 skew).",
+    )
+    parser.add_argument(
+        "--changepoints", action="store_true", help="Also run change-point detection on every tick."
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Print plan and exit without touching the DB."
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument(
-        "--project-id", default="legacy",
+        "--project-id",
+        default="legacy",
         help="project_id демо-проекта для записи метрик (default: legacy).",
     )
     parser.add_argument(
-        "--connection-id", default=None,
+        "--connection-id",
+        default=None,
         help=(
             "connection_id подключения к Postgres. Обязателен когда "
             "--project-id != legacy; при отсутствии используется "
@@ -200,8 +222,11 @@ def main() -> None:
         logger.info(
             "DRY RUN: would run %s ticks at %.1fs interval, "
             "%s rows/tick (incident at tick %s, changepoints=%s)",
-            args.ticks or "∞", args.interval, args.rows_per_tick,
-            args.incident_at, args.changepoints,
+            args.ticks or "∞",
+            args.interval,
+            args.rows_per_tick,
+            args.incident_at,
+            args.changepoints,
         )
         return
 
@@ -220,10 +245,9 @@ def main() -> None:
     tick = 0
     while args.ticks is None or tick < args.ticks:
         tick += 1
-        is_incident = (args.incident_at is not None and tick == args.incident_at)
+        is_incident = args.incident_at is not None and tick == args.incident_at
         n_rows = (
-            args.rows_per_tick * _INCIDENT_ROW_MULTIPLIER
-            if is_incident else args.rows_per_tick
+            args.rows_per_tick * _INCIDENT_ROW_MULTIPLIER if is_incident else args.rows_per_tick
         )
         rows = [_generate_event_row(user_ids, is_incident) for _ in range(n_rows)]
         _insert_batch(engine, rows)
@@ -237,7 +261,11 @@ def main() -> None:
         flag = "  ★ INCIDENT" if is_incident else ""
         logger.info(
             "tick %3d  inserted=%4d  events.row_count=%d%s%s",
-            tick, n_rows, stored_row_count, cp_summary, flag,
+            tick,
+            n_rows,
+            stored_row_count,
+            cp_summary,
+            flag,
         )
 
         if args.ticks is None or tick < args.ticks:

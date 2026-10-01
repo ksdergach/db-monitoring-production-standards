@@ -65,19 +65,31 @@ def _seed_metrics(metrics_url: str) -> None:
     rows: list[dict] = []
     for hours_ago in range(14 * 24, 0, -1):
         ts = now - timedelta(hours=hours_ago)
-        rows.append({
-            "ts": ts, "table_name": "users",
-            "metric_name": "row_count", "value": 1000 + hours_ago,
-        })
-        rows.append({
-            "ts": ts, "table_name": "users",
-            "metric_name": "null_rate", "value": 0.05,
-            "tags": {"column": "email"},
-        })
-    rows.append({
-        "ts": now, "table_name": "users",
-        "metric_name": "size_bytes", "value": 65536,
-    })
+        rows.append(
+            {
+                "ts": ts,
+                "table_name": "users",
+                "metric_name": "row_count",
+                "value": 1000 + hours_ago,
+            }
+        )
+        rows.append(
+            {
+                "ts": ts,
+                "table_name": "users",
+                "metric_name": "null_rate",
+                "value": 0.05,
+                "tags": {"column": "email"},
+            }
+        )
+    rows.append(
+        {
+            "ts": now,
+            "table_name": "users",
+            "metric_name": "size_bytes",
+            "value": 65536,
+        }
+    )
     metrics_storage.save_metrics(rows, "legacy")
 
 
@@ -102,9 +114,15 @@ def _patch_db_module() -> dict:
     db.list_tables = lambda schema=None: list(SEEDED_TABLES)
     db.table_schema = lambda t, schema=None: list(SEEDED_SCHEMAS.get(t, []))
     db.table_stats = lambda t, schema=None: (
-        {"table_name": t, "schema": "public", "row_count": 1000,
-         "size_bytes": 65536, "last_analyze": None}
-        if t in SEEDED_SCHEMAS else None
+        {
+            "table_name": t,
+            "schema": "public",
+            "row_count": 1000,
+            "size_bytes": 65536,
+            "last_analyze": None,
+        }
+        if t in SEEDED_SCHEMAS
+        else None
     )
     db.column_nulls = lambda t, schema=None: []
     db.column_distribution = lambda t, schema=None, top_n=20: []

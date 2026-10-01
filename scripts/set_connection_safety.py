@@ -52,26 +52,29 @@ def main() -> int:
     parser.add_argument("connection_id", help="Connection UUID hex")
     parser.add_argument(
         "--allowlist",
-        help="Comma-separated table names. Empty string clears (back to "
-             "'all tables').",
+        help="Comma-separated table names. Empty string clears (back to 'all tables').",
     )
     parser.add_argument(
         "--denylist",
         help="Comma-separated table names to skip. Empty string clears.",
     )
     parser.add_argument(
-        "--max", dest="max_tables", type=int,
+        "--max",
+        dest="max_tables",
+        type=int,
         help="max_tables_per_tick — hard cap after allow/denylist.",
     )
     parser.add_argument(
-        "--max-size-gb", dest="max_size_gb", type=float,
-        help="Postgres only: skip tables larger than this many GB. "
-             "Negative value clears.",
+        "--max-size-gb",
+        dest="max_size_gb",
+        type=float,
+        help="Postgres only: skip tables larger than this many GB. Negative value clears.",
     )
     parser.add_argument(
-        "--timeout-ms", dest="timeout_ms", type=int,
-        help="Postgres only: SET statement_timeout for collector queries. "
-             "0 clears.",
+        "--timeout-ms",
+        dest="timeout_ms",
+        type=int,
+        help="Postgres only: SET statement_timeout for collector queries. 0 clears.",
     )
     args = parser.parse_args()
 
@@ -85,13 +88,9 @@ def main() -> int:
     if args.max_tables is not None:
         updates["max_tables_per_tick"] = args.max_tables
     if args.max_size_gb is not None:
-        updates["skip_tables_larger_than_gb"] = (
-            None if args.max_size_gb < 0 else args.max_size_gb
-        )
+        updates["skip_tables_larger_than_gb"] = None if args.max_size_gb < 0 else args.max_size_gb
     if args.timeout_ms is not None:
-        updates["statement_timeout_ms"] = (
-            None if args.timeout_ms <= 0 else args.timeout_ms
-        )
+        updates["statement_timeout_ms"] = None if args.timeout_ms <= 0 else args.timeout_ms
 
     if not updates:
         print("No fields supplied — nothing to update.", file=sys.stderr)

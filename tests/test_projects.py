@@ -26,13 +26,16 @@ def projects_app(tmp_path, monkeypatch):
     monkeypatch.setattr(storage, "_initialized", False)
 
     import app.db
+
     monkeypatch.setattr(app.db, "list_tables", lambda schema=None: [])
 
-    app = create_app({
-        "TESTING": True,
-        "LOGIN_DISABLED": False,
-        "WTF_CSRF_ENABLED": False,
-    })
+    app = create_app(
+        {
+            "TESTING": True,
+            "LOGIN_DISABLED": False,
+            "WTF_CSRF_ENABLED": False,
+        }
+    )
     return app
 
 
@@ -43,11 +46,17 @@ def client(projects_app):
 
 def _register(client, email="u@example.com", password="supersecret1"):
     """Register a user; the post-register session is left authenticated."""
-    resp = client.post("/auth/register", data={
-        "email": email, "password": password, "confirm": password,
-    })
+    resp = client.post(
+        "/auth/register",
+        data={
+            "email": email,
+            "password": password,
+            "confirm": password,
+        },
+    )
     from app.metrics_storage import get_user_by_email
     from app.projects import create_default_project_for
+
     user = get_user_by_email(email)
     if user:
         create_default_project_for(user["id"])
@@ -87,9 +96,14 @@ def test_default_project_is_set_as_current(client):
 
 def test_create_project_redirects_to_detail(client):
     _register(client)
-    resp = client.post("/projects/new", data={
-        "name": "Production", "slug": "prod",
-    }, follow_redirects=False)
+    resp = client.post(
+        "/projects/new",
+        data={
+            "name": "Production",
+            "slug": "prod",
+        },
+        follow_redirects=False,
+    )
     assert resp.status_code == 302
     assert resp.headers["Location"].endswith("/projects/prod")
 

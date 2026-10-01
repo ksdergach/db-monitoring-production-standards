@@ -189,9 +189,7 @@ def detail(slug: str):
     )
     jobs = list_jobs_for_user(get_scheduler(), current_user.id)
     jobs_by_connection = {
-        job["connection_id"]: job
-        for job in jobs
-        if job.get("project_id") == project["id"]
+        job["connection_id"]: job for job in jobs if job.get("project_id") == project["id"]
     }
     connections = [
         {
@@ -341,7 +339,9 @@ def create_invite(slug: str):
 
     try:
         invite = metrics_storage.create_invite_token(
-            project["id"], role, current_user.id,
+            project["id"],
+            role,
+            current_user.id,
         )
     except metrics_storage.InvalidMemberRole as exc:
         flash(str(exc), "error")
@@ -351,7 +351,9 @@ def create_invite(slug: str):
     # so the link includes scheme+host — operators forwarding it via
     # Slack/email shouldn't have to know APP_BASE_URL.
     invite_url = url_for(
-        "invites.accept_invite", token=invite["token"], _external=True,
+        "invites.accept_invite",
+        token=invite["token"],
+        _external=True,
     )
     flash(f"Пригласительная ссылка ({role}): {invite_url}", "info")
     return redirect(url_for("projects.detail", slug=slug))
@@ -383,26 +385,29 @@ def accept_invite(token: str):
     if expires.tzinfo is None:
         expires = expires.replace(tzinfo=UTC)
     if expires < datetime.now(UTC):
-        return render_template("projects/invite_error.html",
-                                message="Срок действия ссылки истёк."), 400
+        return render_template(
+            "projects/invite_error.html", message="Срок действия ссылки истёк."
+        ), 400
     if invite["used_at"] is not None:
-        return render_template("projects/invite_error.html",
-                                message="Ссылка уже использована."), 400
+        return render_template(
+            "projects/invite_error.html", message="Ссылка уже использована."
+        ), 400
 
     if not current_user.is_authenticated:
         # next=/invite/<token> bounces back here after register/login.
         return redirect(
-            url_for("auth.register", next=url_for("invites.accept_invite",
-                                                    token=token))
+            url_for("auth.register", next=url_for("invites.accept_invite", token=token))
         )
 
     # Already a member? Don't burn the token — just send them in.
     existing_role = metrics_storage.get_member_role(
-        invite["project_id"], current_user.id,
+        invite["project_id"],
+        current_user.id,
     )
     if existing_role is not None:
         project = metrics_storage.get_project_by_id(
-            current_user.id, invite["project_id"],
+            current_user.id,
+            invite["project_id"],
         )
         flash("Вы уже участник этого проекта.", "info")
         return redirect(url_for("projects.detail", slug=project["slug"]))
@@ -412,14 +417,17 @@ def accept_invite(token: str):
     except LookupError:
         abort(404)
     except metrics_storage.InviteExpired:
-        return render_template("projects/invite_error.html",
-                                message="Срок действия ссылки истёк."), 400
+        return render_template(
+            "projects/invite_error.html", message="Срок действия ссылки истёк."
+        ), 400
     except metrics_storage.InviteAlreadyUsed:
-        return render_template("projects/invite_error.html",
-                                message="Ссылка уже использована."), 400
+        return render_template(
+            "projects/invite_error.html", message="Ссылка уже использована."
+        ), 400
 
     project = metrics_storage.get_project_by_id(
-        current_user.id, invite["project_id"],
+        current_user.id,
+        invite["project_id"],
     )
     flash(f"Вы добавлены в проект «{project['name']}».", "success")
     return redirect(url_for("projects.detail", slug=project["slug"]))

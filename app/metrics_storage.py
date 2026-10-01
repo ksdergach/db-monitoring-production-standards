@@ -54,6 +54,7 @@ def _new_engine() -> Engine:
             cursor = dbapi_connection.cursor()
             cursor.execute("PRAGMA foreign_keys = ON")
             cursor.close()
+
     return engine
 
 
@@ -83,9 +84,7 @@ def _apply_schema(engine: Engine) -> None:
     # Naive `;` split — assumes no statement contains a `;` inside a string
     # literal or a `$$...$$` body. Today's schema files honour that; do not
     # add triggers / PL/pgSQL functions without revisiting this loop.
-    stripped = "\n".join(
-        line.split("--", 1)[0] for line in sql.splitlines()
-    )
+    stripped = "\n".join(line.split("--", 1)[0] for line in sql.splitlines())
     statements = [s.strip() for s in stripped.split(";") if s.strip()]
     # Each statement gets its own transaction so a failure on the optional
     # TimescaleDB extension (plain Postgres / missing privileges) doesn't
@@ -110,8 +109,7 @@ def _existing_columns(engine: Engine, table: str) -> set[str]:
     with engine.connect() as conn:
         if _is_postgres():
             rows = conn.execute(
-                text("SELECT column_name FROM information_schema.columns "
-                     "WHERE table_name = :t"),
+                text("SELECT column_name FROM information_schema.columns WHERE table_name = :t"),
                 {"t": table},
             ).fetchall()
             return {r[0] for r in rows}
@@ -137,11 +135,13 @@ def _table_exists(engine: Engine, table: str) -> bool:
 _PROJECT_SCOPED_ML_TABLES = {
     "anomaly_scores": {
         "columns": [
-            "project_id", "ts", "table_name", "score", "is_anomaly",
+            "project_id",
+            "ts",
+            "table_name",
+            "score",
+            "is_anomaly",
         ],
-        "select": (
-            "'legacy' AS project_id, ts, table_name, score, is_anomaly"
-        ),
+        "select": ("'legacy' AS project_id, ts, table_name, score, is_anomaly"),
         "sqlite_ddl": """
             CREATE TABLE anomaly_scores__new (
                 project_id  TEXT NOT NULL DEFAULT 'legacy',
@@ -162,8 +162,14 @@ _PROJECT_SCOPED_ML_TABLES = {
     },
     "changepoints": {
         "columns": [
-            "project_id", "ts", "table_name", "metric_name", "score",
-            "value_before", "value_after", "detected_at",
+            "project_id",
+            "ts",
+            "table_name",
+            "metric_name",
+            "score",
+            "value_before",
+            "value_after",
+            "detected_at",
         ],
         "select": (
             "'legacy' AS project_id, ts, table_name, metric_name, score, "
@@ -192,8 +198,15 @@ _PROJECT_SCOPED_ML_TABLES = {
     },
     "drift_reports": {
         "columns": [
-            "project_id", "table_name", "column_name", "data_type", "psi",
-            "ks_pvalue", "is_drift", "severity", "computed_at",
+            "project_id",
+            "table_name",
+            "column_name",
+            "data_type",
+            "psi",
+            "ks_pvalue",
+            "is_drift",
+            "severity",
+            "computed_at",
         ],
         "select": (
             "'legacy' AS project_id, table_name, column_name, data_type, psi, "
@@ -215,8 +228,7 @@ _PROJECT_SCOPED_ML_TABLES = {
         """,
         "postgres_pk": ["project_id", "table_name", "column_name"],
         "indexes": [
-            "CREATE INDEX IF NOT EXISTS idx_drift_reports_table "
-            "ON drift_reports (table_name)",
+            "CREATE INDEX IF NOT EXISTS idx_drift_reports_table ON drift_reports (table_name)",
             "CREATE INDEX IF NOT EXISTS idx_drift_reports_project_ts "
             "ON drift_reports (project_id, computed_at DESC)",
         ],
@@ -232,7 +244,8 @@ def _sqlite_pk_columns(engine: Engine, table: str) -> list[str]:
 
 def _postgres_pk_columns(engine: Engine, table: str) -> list[str]:
     with engine.connect() as conn:
-        rows = conn.execute(text("""
+        rows = conn.execute(
+            text("""
             SELECT a.attname
             FROM pg_index i
             JOIN pg_attribute a
@@ -240,24 +253,27 @@ def _postgres_pk_columns(engine: Engine, table: str) -> list[str]:
             WHERE i.indrelid = CAST(:table_name AS regclass)
               AND i.indisprimary
             ORDER BY array_position(i.indkey, a.attnum)
-        """), {"table_name": table}).fetchall()
+        """),
+            {"table_name": table},
+        ).fetchall()
     return [r[0] for r in rows]
 
 
 def _postgres_pk_constraint(engine: Engine, table: str) -> str | None:
     with engine.connect() as conn:
-        row = conn.execute(text("""
+        row = conn.execute(
+            text("""
             SELECT conname
             FROM pg_constraint
             WHERE conrelid = CAST(:table_name AS regclass)
               AND contype = 'p'
-        """), {"table_name": table}).fetchone()
+        """),
+            {"table_name": table},
+        ).fetchone()
     return row[0] if row else None
 
 
-def _migrate_sqlite_project_scoped_ml_table(
-    engine: Engine, table: str, spec: dict
-) -> None:
+def _migrate_sqlite_project_scoped_ml_table(engine: Engine, table: str, spec: dict) -> None:
     desired_pk = spec["postgres_pk"]
     if (
         "project_id" in _existing_columns(engine, table)
@@ -273,10 +289,9 @@ def _migrate_sqlite_project_scoped_ml_table(
             select_cols = columns
         else:
             select_cols = spec["select"]
-        conn.execute(text(
-            f"INSERT INTO {table}__new ({columns}) "
-            f"SELECT {select_cols} FROM {table}"
-        ))
+        conn.execute(
+            text(f"INSERT INTO {table}__new ({columns}) SELECT {select_cols} FROM {table}")
+        )
         conn.execute(text(f"DROP TABLE {table}"))
         conn.execute(text(f"ALTER TABLE {table}__new RENAME TO {table}"))
         for index_sql in spec["indexes"]:
@@ -284,9 +299,7 @@ def _migrate_sqlite_project_scoped_ml_table(
     logger.info("%s migrated to project-scoped primary key", table)
 
 
-def _migrate_postgres_project_scoped_ml_table(
-    engine: Engine, table: str, spec: dict
-) -> None:
+def _migrate_postgres_project_scoped_ml_table(engine: Engine, table: str, spec: dict) -> None:
     desired_pk = spec["postgres_pk"]
     columns = _existing_columns(engine, table)
     pk_columns = _postgres_pk_columns(engine, table)
@@ -296,15 +309,12 @@ def _migrate_postgres_project_scoped_ml_table(
 
     with engine.begin() as conn:
         if "project_id" not in columns:
-            conn.execute(text(
-                f"ALTER TABLE {table} ADD COLUMN project_id TEXT NOT NULL "
-                "DEFAULT 'legacy'"
-            ))
+            conn.execute(
+                text(f"ALTER TABLE {table} ADD COLUMN project_id TEXT NOT NULL DEFAULT 'legacy'")
+            )
         if constraint:
             conn.execute(text(f"ALTER TABLE {table} DROP CONSTRAINT {constraint}"))
-        conn.execute(text(
-            f"ALTER TABLE {table} ADD PRIMARY KEY ({', '.join(desired_pk)})"
-        ))
+        conn.execute(text(f"ALTER TABLE {table} ADD PRIMARY KEY ({', '.join(desired_pk)})"))
         for index_sql in spec["indexes"]:
             conn.execute(text(index_sql))
     logger.info("%s migrated to project-scoped primary key", table)
@@ -328,52 +338,59 @@ def _migrate_existing_schema(engine: Engine) -> None:
     is checked independently — a partial DB (e.g. notifications without metrics)
     still gets migrated correctly.
     """
-    if _table_exists(engine, "metrics") and "project_id" not in _existing_columns(engine, "metrics"):
+    if _table_exists(engine, "metrics") and "project_id" not in _existing_columns(
+        engine, "metrics"
+    ):
         with engine.begin() as conn:
             # NOT NULL + DEFAULT works on SQLite (>=3.3) and Postgres; the
             # default backfills existing rows with the 'legacy' tenant id.
-            conn.execute(text(
-                "ALTER TABLE metrics ADD COLUMN project_id TEXT NOT NULL "
-                "DEFAULT 'legacy'"
-            ))
-        logger.info(
-            "metrics.project_id added (existing rows backfilled to 'legacy')"
-        )
+            conn.execute(
+                text("ALTER TABLE metrics ADD COLUMN project_id TEXT NOT NULL DEFAULT 'legacy'")
+            )
+        logger.info("metrics.project_id added (existing rows backfilled to 'legacy')")
 
-    if _table_exists(engine, "schema_events") and "project_id" not in _existing_columns(engine, "schema_events"):
+    if _table_exists(engine, "schema_events") and "project_id" not in _existing_columns(
+        engine, "schema_events"
+    ):
         with engine.begin() as conn:
-            conn.execute(text(
-                "ALTER TABLE schema_events ADD COLUMN project_id TEXT NOT NULL "
-                "DEFAULT 'legacy'"
-            ))
-            conn.execute(text(
-                "CREATE INDEX IF NOT EXISTS idx_schema_events_project_table_ts "
-                "ON schema_events (project_id, table_name, ts)"
-            ))
-        logger.info(
-            "schema_events.project_id added (existing rows backfilled to 'legacy')"
-        )
+            conn.execute(
+                text(
+                    "ALTER TABLE schema_events ADD COLUMN project_id TEXT NOT NULL DEFAULT 'legacy'"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_schema_events_project_table_ts "
+                    "ON schema_events (project_id, table_name, ts)"
+                )
+            )
+        logger.info("schema_events.project_id added (existing rows backfilled to 'legacy')")
 
-    if _table_exists(engine, "notifications") and "project_id" not in _existing_columns(engine, "notifications"):
+    if _table_exists(engine, "notifications") and "project_id" not in _existing_columns(
+        engine, "notifications"
+    ):
         with engine.begin() as conn:
-            conn.execute(text(
-                "ALTER TABLE notifications ADD COLUMN project_id TEXT NOT NULL "
-                "DEFAULT 'legacy'"
-            ))
+            conn.execute(
+                text(
+                    "ALTER TABLE notifications ADD COLUMN project_id TEXT NOT NULL DEFAULT 'legacy'"
+                )
+            )
             # Add index in the same transaction so existing DBs get it too.
-            conn.execute(text(
-                "CREATE INDEX IF NOT EXISTS idx_notifications_project_ts "
-                "ON notifications (project_id, ts DESC)"
-            ))
-        logger.info(
-            "notifications.project_id added (existing rows backfilled to 'legacy')"
-        )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_notifications_project_ts "
+                    "ON notifications (project_id, ts DESC)"
+                )
+            )
+        logger.info("notifications.project_id added (existing rows backfilled to 'legacy')")
 
     # #197: schema_snapshots gets project_id in the primary key. The table is
     # a cache (the next collection tick re-populates it); dropping it is safe.
     # Side effect: one tick without snapshot baseline — diff_schemas returns []
     # when before=None, so no false-positive events fire.
-    if _table_exists(engine, "schema_snapshots") and "project_id" not in _existing_columns(engine, "schema_snapshots"):
+    if _table_exists(engine, "schema_snapshots") and "project_id" not in _existing_columns(
+        engine, "schema_snapshots"
+    ):
         with engine.begin() as conn:
             conn.execute(text("DROP TABLE schema_snapshots"))
         logger.info(
@@ -385,9 +402,7 @@ def _migrate_existing_schema(engine: Engine) -> None:
     # к /admin/* без явного промоушена через ADMIN_EMAIL.
     if _table_exists(engine, "users") and "is_admin" not in _existing_columns(engine, "users"):
         with engine.begin() as conn:
-            conn.execute(text(
-                "ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0"
-            ))
+            conn.execute(text("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0"))
         logger.info("users.is_admin added (existing rows default to 0)")
 
     # #143: telegram_throttle gets project_id in the primary key. The table
@@ -397,7 +412,9 @@ def _migrate_existing_schema(engine: Engine) -> None:
     # with the new structure. Side effect: throttle cache is reset once
     # (existing throttle rows are discarded — at most one extra notification
     # per (table, event_key) may fire right after deploy).
-    if _table_exists(engine, "telegram_throttle") and "project_id" not in _existing_columns(engine, "telegram_throttle"):
+    if _table_exists(engine, "telegram_throttle") and "project_id" not in _existing_columns(
+        engine, "telegram_throttle"
+    ):
         with engine.begin() as conn:
             conn.execute(text("DROP TABLE telegram_throttle"))
         logger.info(
@@ -421,9 +438,7 @@ def _migrate_existing_schema(engine: Engine) -> None:
         for col, ddl in safety_columns:
             if col not in present:
                 with engine.begin() as conn:
-                    conn.execute(text(
-                        f"ALTER TABLE connections ADD COLUMN {col} {ddl}"
-                    ))
+                    conn.execute(text(f"ALTER TABLE connections ADD COLUMN {col} {ddl}"))
                 logger.info("connections.%s added (#232 load safety)", col)
 
         # #234: Iceberg production params. namespace/warehouse — plain TEXT,
@@ -438,25 +453,24 @@ def _migrate_existing_schema(engine: Engine) -> None:
         for col, ddl in iceberg_columns:
             if col not in present:
                 with engine.begin() as conn:
-                    conn.execute(text(
-                        f"ALTER TABLE connections ADD COLUMN {col} {ddl}"
-                    ))
+                    conn.execute(text(f"ALTER TABLE connections ADD COLUMN {col} {ddl}"))
                 logger.info("connections.%s added (#234 iceberg params)", col)
 
         # #233: collection_mode. Default 'full' keeps existing rows on the
         # same code path; sample/approx only meaningful for Postgres.
         if "collection_mode" not in present:
             with engine.begin() as conn:
-                conn.execute(text(
-                    "ALTER TABLE connections ADD COLUMN collection_mode "
-                    "TEXT DEFAULT 'full'"
-                ))
+                conn.execute(
+                    text("ALTER TABLE connections ADD COLUMN collection_mode TEXT DEFAULT 'full'")
+                )
                 # SQLite/Postgres both fill DEFAULT for new column; backfill
                 # explicit value so subsequent reads never see NULL.
-                conn.execute(text(
-                    "UPDATE connections SET collection_mode = 'full' "
-                    "WHERE collection_mode IS NULL"
-                ))
+                conn.execute(
+                    text(
+                        "UPDATE connections SET collection_mode = 'full' "
+                        "WHERE collection_mode IS NULL"
+                    )
+                )
             logger.info("connections.collection_mode added (#233)")
 
         # #235: Iceberg load-safety. namespace_allowlist TEXT (JSON-list);
@@ -468,9 +482,7 @@ def _migrate_existing_schema(engine: Engine) -> None:
         for col, ddl in iceberg_safety:
             if col not in present:
                 with engine.begin() as conn:
-                    conn.execute(text(
-                        f"ALTER TABLE connections ADD COLUMN {col} {ddl}"
-                    ))
+                    conn.execute(text(f"ALTER TABLE connections ADD COLUMN {col} {ddl}"))
                 logger.info("connections.%s added (#235 iceberg safety)", col)
 
         probe_columns = {
@@ -482,9 +494,7 @@ def _migrate_existing_schema(engine: Engine) -> None:
         if _is_postgres():
             probe_columns["last_probe_at"] = "TIMESTAMPTZ"
         missing_probe_cols = [
-            (name, ddl)
-            for name, ddl in probe_columns.items()
-            if name not in present
+            (name, ddl) for name, ddl in probe_columns.items() if name not in present
         ]
         if missing_probe_cols:
             with engine.begin() as conn:
@@ -503,12 +513,14 @@ def _migrate_existing_schema(engine: Engine) -> None:
     # and skip. Runs AFTER the schema CREATE so the table exists.
     if _table_exists(engine, "projects") and _table_exists(engine, "project_members"):
         with engine.begin() as conn:
-            existing = conn.execute(text("""
+            existing = conn.execute(
+                text("""
                 SELECT p.id, p.user_id FROM projects p
                 LEFT JOIN project_members m
                   ON m.project_id = p.id AND m.user_id = p.user_id
                 WHERE m.project_id IS NULL
-            """)).fetchall()
+            """)
+            ).fetchall()
             if existing:
                 now_iso = _iso(datetime.now(UTC))
                 conn.execute(
@@ -520,7 +532,8 @@ def _migrate_existing_schema(engine: Engine) -> None:
                     [{"pid": pid, "uid": uid, "ts": now_iso} for pid, uid in existing],
                 )
                 logger.info(
-                    "Backfilled %d owner row(s) into project_members", len(existing),
+                    "Backfilled %d owner row(s) into project_members",
+                    len(existing),
                 )
 
 
@@ -534,9 +547,7 @@ def _is_optional_timescale_stmt(stmt: str) -> bool:
 # --- Cross-dialect helpers --------------------------------------------------
 
 
-def _upsert_sql(
-    table: str, columns: list[str], conflict_columns: list[str]
-) -> str:
+def _upsert_sql(table: str, columns: list[str], conflict_columns: list[str]) -> str:
     """Return UPSERT SQL appropriate for the active backend.
 
     SQLite uses `INSERT OR REPLACE`; Postgres uses
@@ -642,9 +653,7 @@ def get_metrics(
     ]
 
 
-def get_latest_metric(
-    table_name: str, metric_name: str, project_id: str
-) -> dict | None:
+def get_latest_metric(table_name: str, metric_name: str, project_id: str) -> dict | None:
     """Return the most recent {ts, value, tags} for (project, table, metric)."""
     stmt = text("""
         SELECT ts, value, tags
@@ -657,8 +666,8 @@ def get_latest_metric(
     """)
     with get_engine().connect() as conn:
         row = conn.execute(
-            stmt, {"project_id": project_id, "table_name": table_name,
-                   "metric_name": metric_name},
+            stmt,
+            {"project_id": project_id, "table_name": table_name, "metric_name": metric_name},
         ).fetchone()
     if not row:
         return None
@@ -669,9 +678,7 @@ def get_latest_metric(
     }
 
 
-def get_latest_null_counts(
-    table_name: str, project_id: str
-) -> dict[str, int]:
+def get_latest_null_counts(table_name: str, project_id: str) -> dict[str, int]:
     """Return {column: null_count} from the latest collector run.
 
     Scoped to ``project_id`` (#53) — same table_name in another tenant
@@ -692,7 +699,8 @@ def get_latest_null_counts(
     """)
     with get_engine().connect() as conn:
         rows = conn.execute(
-            stmt, {"project_id": project_id, "table_name": table_name},
+            stmt,
+            {"project_id": project_id, "table_name": table_name},
         ).fetchall()
     result: dict[str, int] = {}
     for tags_json, value in rows:
@@ -724,25 +732,37 @@ def save_changepoints(rows: Iterable[dict], project_id: str = "legacy") -> list[
     payload = []
     detected_at = _iso(datetime.now(UTC))
     for r in rows:
-        payload.append({
-            "project_id": project_id,
-            "ts": _iso(r["ts"]),
-            "table_name": r["table_name"],
-            "metric_name": r["metric_name"],
-            "score": float(r["score"]),
-            "value_before": float(r["value_before"]),
-            "value_after": float(r["value_after"]),
-            "detected_at": detected_at,
-        })
+        payload.append(
+            {
+                "project_id": project_id,
+                "ts": _iso(r["ts"]),
+                "table_name": r["table_name"],
+                "metric_name": r["metric_name"],
+                "score": float(r["score"]),
+                "value_before": float(r["value_before"]),
+                "value_after": float(r["value_after"]),
+                "detected_at": detected_at,
+            }
+        )
     if not payload:
         return 0
 
-    insert_stmt = text(_upsert_sql(
-        "changepoints",
-        ["project_id", "ts", "table_name", "metric_name", "score",
-         "value_before", "value_after", "detected_at"],
-        conflict_columns=["project_id", "ts", "table_name", "metric_name"],
-    ))
+    insert_stmt = text(
+        _upsert_sql(
+            "changepoints",
+            [
+                "project_id",
+                "ts",
+                "table_name",
+                "metric_name",
+                "score",
+                "value_before",
+                "value_after",
+                "detected_at",
+            ],
+            conflict_columns=["project_id", "ts", "table_name", "metric_name"],
+        )
+    )
     # Dialect-specific time delta: julianday is SQLite-only. On Postgres the
     # ts column is TIMESTAMPTZ and we compute hours via EXTRACT(EPOCH).
     # Delete by the changepoints PK — identical on both dialects.
@@ -776,14 +796,17 @@ def save_changepoints(rows: Iterable[dict], project_id: str = "legacy") -> list[
     with get_engine().begin() as conn:
         for row in payload:
             direction = 1 if row["value_after"] > row["value_before"] else 0
-            existing = conn.execute(cluster_query, {
-                "project_id": project_id,
-                "t": row["table_name"],
-                "m": row["metric_name"],
-                "ts": row["ts"],
-                "w": _CLUSTER_WINDOW_HOURS,
-                "dir": direction,
-            }).fetchall()
+            existing = conn.execute(
+                cluster_query,
+                {
+                    "project_id": project_id,
+                    "t": row["table_name"],
+                    "m": row["metric_name"],
+                    "ts": row["ts"],
+                    "w": _CLUSTER_WINDOW_HOURS,
+                    "dir": direction,
+                },
+            ).fetchall()
 
             if not existing:
                 conn.execute(insert_stmt, row)
@@ -847,9 +870,7 @@ def get_changepoints(
 
 def get_schema_snapshot(table_name: str, project_id: str = "legacy") -> list[dict] | None:
     """Latest stored column list for a table and project, or None if no snapshot yet."""
-    stmt = text(
-        "SELECT columns FROM schema_snapshots WHERE project_id = :pid AND table_name = :t"
-    )
+    stmt = text("SELECT columns FROM schema_snapshots WHERE project_id = :pid AND table_name = :t")
     with get_engine().connect() as conn:
         row = conn.execute(stmt, {"pid": project_id, "t": table_name}).fetchone()
     if not row:
@@ -865,12 +886,15 @@ def save_schema_snapshot(table_name: str, columns: list[dict], project_id: str =
         conflict_columns=["project_id", "table_name"],
     )
     with get_engine().begin() as conn:
-        conn.execute(text(sql), {
-            "project_id": project_id,
-            "table_name": table_name,
-            "columns": json.dumps(columns),
-            "captured_at": _iso(datetime.now(UTC)),
-        })
+        conn.execute(
+            text(sql),
+            {
+                "project_id": project_id,
+                "table_name": table_name,
+                "columns": json.dumps(columns),
+                "captured_at": _iso(datetime.now(UTC)),
+            },
+        )
 
 
 def save_schema_events(events: Iterable[dict], project_id: str = "legacy") -> int:
@@ -878,14 +902,16 @@ def save_schema_events(events: Iterable[dict], project_id: str = "legacy") -> in
     column_name, details}."""
     payload = []
     for e in events:
-        payload.append({
-            "ts": _iso(e["ts"]),
-            "table_name": e["table_name"],
-            "change_type": e["change_type"],
-            "column_name": e["column_name"],
-            "details": json.dumps(e.get("details") or {}),
-            "project_id": project_id,
-        })
+        payload.append(
+            {
+                "ts": _iso(e["ts"]),
+                "table_name": e["table_name"],
+                "change_type": e["change_type"],
+                "column_name": e["column_name"],
+                "details": json.dumps(e.get("details") or {}),
+                "project_id": project_id,
+            }
+        )
     if not payload:
         return 0
     stmt = text("""
@@ -928,20 +954,24 @@ def save_anomaly_scores(rows: Iterable[dict], project_id: str = "legacy") -> int
     """Upsert anomaly scores. Each row: {ts, table_name, score, is_anomaly}."""
     payload = []
     for r in rows:
-        payload.append({
-            "project_id": project_id,
-            "ts": _iso(r["ts"]),
-            "table_name": r["table_name"],
-            "score": float(r["score"]),
-            "is_anomaly": int(r["is_anomaly"]),
-        })
+        payload.append(
+            {
+                "project_id": project_id,
+                "ts": _iso(r["ts"]),
+                "table_name": r["table_name"],
+                "score": float(r["score"]),
+                "is_anomaly": int(r["is_anomaly"]),
+            }
+        )
     if not payload:
         return 0
-    stmt = text(_upsert_sql(
-        "anomaly_scores",
-        ["project_id", "ts", "table_name", "score", "is_anomaly"],
-        conflict_columns=["project_id", "ts", "table_name"],
-    ))
+    stmt = text(
+        _upsert_sql(
+            "anomaly_scores",
+            ["project_id", "ts", "table_name", "score", "is_anomaly"],
+            conflict_columns=["project_id", "ts", "table_name"],
+        )
+    )
     with get_engine().begin() as conn:
         conn.execute(stmt, payload)
     return len(payload)
@@ -967,15 +997,10 @@ def get_anomaly_scores(
             stmt,
             {"project_id": project_id, "t": table_name, "since": since},
         ).fetchall()
-    return [
-        {"ts": _normalize_ts(r[0]), "score": r[1], "is_anomaly": r[2]}
-        for r in rows
-    ]
+    return [{"ts": _normalize_ts(r[0]), "score": r[1], "is_anomaly": r[2]} for r in rows]
 
 
-def save_drift_reports(
-    table_name: str, rows: Iterable[dict], project_id: str = "legacy"
-) -> int:
+def save_drift_reports(table_name: str, rows: Iterable[dict], project_id: str = "legacy") -> int:
     """Полностью переписать кеш drift для одной таблицы.
 
     Рассчитанный снапшот PSI/KS — слайд по 7-дневному окну, поэтому хранить
@@ -984,17 +1009,19 @@ def save_drift_reports(
     payload = []
     computed_at = _iso(datetime.now(UTC))
     for r in rows:
-        payload.append({
-            "project_id": project_id,
-            "table_name": table_name,
-            "column_name": r["column"],
-            "data_type": r.get("data_type"),
-            "psi": float(r["psi"]) if r.get("psi") is not None else None,
-            "ks_pvalue": float(r["ks_pvalue"]) if r.get("ks_pvalue") is not None else None,
-            "is_drift": int(bool(r.get("is_drift"))),
-            "severity": r["severity"],
-            "computed_at": computed_at,
-        })
+        payload.append(
+            {
+                "project_id": project_id,
+                "table_name": table_name,
+                "column_name": r["column"],
+                "data_type": r.get("data_type"),
+                "psi": float(r["psi"]) if r.get("psi") is not None else None,
+                "ks_pvalue": float(r["ks_pvalue"]) if r.get("ks_pvalue") is not None else None,
+                "is_drift": int(bool(r.get("is_drift"))),
+                "severity": r["severity"],
+                "computed_at": computed_at,
+            }
+        )
     with get_engine().begin() as conn:
         conn.execute(
             text("""
@@ -1027,9 +1054,7 @@ def get_drift_report(table_name: str, project_id: str = "legacy") -> list[dict]:
         ORDER BY COALESCE(psi, 0) DESC
     """)
     with get_engine().connect() as conn:
-        rows = conn.execute(
-            stmt, {"project_id": project_id, "t": table_name}
-        ).fetchall()
+        rows = conn.execute(stmt, {"project_id": project_id, "t": table_name}).fetchall()
     return [
         {
             "column": r[0],
@@ -1071,7 +1096,8 @@ def purge_old(retention_days: int = 90, project_id: str | None = None) -> int:
             if dropped:
                 logger.info(
                     "purge_old: dropped %d Timescale chunks older than %s",
-                    len(dropped), cutoff,
+                    len(dropped),
+                    cutoff,
                 )
         except ProgrammingError as e:
             sqlstate = getattr(getattr(e, "orig", None), "pgcode", None)
@@ -1184,15 +1210,10 @@ def _fetch_anomalies_by_ts(
         where += " AND ts >= :since"
     stmt = text(f"SELECT ts, COUNT(*) FROM anomaly_scores {where} GROUP BY ts")
     with get_engine().connect() as conn:
-        return {
-            _normalize_ts(r[0]): int(r[1])
-            for r in conn.execute(stmt, params).fetchall()
-        }
+        return {_normalize_ts(r[0]): int(r[1]) for r in conn.execute(stmt, params).fetchall()}
 
 
-def _history_aggregate(
-    project_id: str, window: timedelta | None = timedelta(days=30)
-) -> dict:
+def _history_aggregate(project_id: str, window: timedelta | None = timedelta(days=30)) -> dict:
     """Build reusable aggregates from metrics table, scoped to project (#53).
 
     A collector run is represented by a timestamp `ts`.
@@ -1256,9 +1277,7 @@ def _history_aggregate(
     }
 
 
-def build_history_aggregate(
-    project_id: str, window: timedelta = timedelta(days=30)
-) -> dict:
+def build_history_aggregate(project_id: str, window: timedelta = timedelta(days=30)) -> dict:
     """Compute a single aggregate for the History page, scoped to project.
 
     Call once per request and pass the result to get_history_runs,
@@ -1340,10 +1359,9 @@ def get_history_insights(agg: dict) -> list[str]:
     rows = agg["rows"]
 
     latest_null_rates = [
-        r for r in rows
-        if r["ts"] == latest_ts
-        and r["metric_name"] == "null_rate"
-        and r["value"] is not None
+        r
+        for r in rows
+        if r["ts"] == latest_ts and r["metric_name"] == "null_rate" and r["value"] is not None
     ]
 
     insights: list[str] = []
@@ -1352,19 +1370,25 @@ def get_history_insights(agg: dict) -> list[str]:
     checked_tables = len(agg["tables_by_ts"].get(latest_ts, set()))
     total_tables = agg["total_tables"]
     coverage_pct = round((checked_tables / total_tables) * 100, 1) if total_tables else 0.0
-    insights.append(f"Покрытие последней проверки: {coverage_pct:.1f}% ({checked_tables} из {total_tables} таблиц).")
+    insights.append(
+        f"Покрытие последней проверки: {coverage_pct:.1f}% ({checked_tables} из {total_tables} таблиц)."
+    )
 
     # Problem insight
     latest_problems = agg["problems_by_ts"].get(latest_ts, 0)
     if latest_problems:
         insights.append(f"В последней проверке найдено проблемных NULL-метрик: {latest_problems}.")
     else:
-        insights.append("В последней проверке критичных NULL-проблем по заданным порогам не обнаружено.")
+        insights.append(
+            "В последней проверке критичных NULL-проблем по заданным порогам не обнаружено."
+        )
 
     # ML anomaly insight (IsolationForest)
     latest_anomalies = agg["anomalies_by_ts"].get(latest_ts, 0)
     if latest_anomalies:
-        insights.append(f"IsolationForest пометил аномалий в последней проверке: {latest_anomalies}.")
+        insights.append(
+            f"IsolationForest пометил аномалий в последней проверке: {latest_anomalies}."
+        )
 
     # Biggest current risk
     if latest_null_rates:
@@ -1410,9 +1434,13 @@ def get_history_insights(agg: dict) -> list[str]:
 
 # --- Telegram notification throttle (#38 → #143 multi-tenant) ---
 
+
 def is_throttled(
-    project_id: str, table: str, event_key: str,
-    *, throttle_minutes: int | None = None,
+    project_id: str,
+    table: str,
+    event_key: str,
+    *,
+    throttle_minutes: int | None = None,
 ) -> bool:
     """Return True if a notification for this (project, table, event_key)
     was sent within the throttle window.
@@ -1427,9 +1455,14 @@ def is_throttled(
         WHERE project_id = :pid AND table_name = :table AND event_key = :key
     """)
     with get_engine().connect() as conn:
-        row = conn.execute(stmt, {
-            "pid": project_id, "table": table, "key": event_key,
-        }).fetchone()
+        row = conn.execute(
+            stmt,
+            {
+                "pid": project_id,
+                "table": table,
+                "key": event_key,
+            },
+        ).fetchone()
     if not row:
         return False
     raw = row[0]
@@ -1440,9 +1473,7 @@ def is_throttled(
         if last_sent.tzinfo is None:
             last_sent = last_sent.replace(tzinfo=UTC)
     window_minutes = (
-        throttle_minutes
-        if throttle_minutes is not None
-        else settings.TELEGRAM_THROTTLE_MINUTES
+        throttle_minutes if throttle_minutes is not None else settings.TELEGRAM_THROTTLE_MINUTES
     )
     age = datetime.now(UTC) - last_sent
     return age.total_seconds() < window_minutes * 60
@@ -1450,21 +1481,27 @@ def is_throttled(
 
 def update_throttle(project_id: str, table: str, event_key: str) -> None:
     """Record that a notification for (project, table, event_key) was just sent."""
-    stmt = text(_upsert_sql(
-        "telegram_throttle",
-        ["project_id", "table_name", "event_key", "last_sent_at"],
-        conflict_columns=["project_id", "table_name", "event_key"],
-    ))
+    stmt = text(
+        _upsert_sql(
+            "telegram_throttle",
+            ["project_id", "table_name", "event_key", "last_sent_at"],
+            conflict_columns=["project_id", "table_name", "event_key"],
+        )
+    )
     with get_engine().begin() as conn:
-        conn.execute(stmt, {
-            "project_id": project_id,
-            "table_name": table,
-            "event_key": event_key,
-            "last_sent_at": _iso(datetime.now(UTC)),
-        })
+        conn.execute(
+            stmt,
+            {
+                "project_id": project_id,
+                "table_name": table,
+                "event_key": event_key,
+                "last_sent_at": _iso(datetime.now(UTC)),
+            },
+        )
 
 
 # --- Per-project Telegram configuration (#143) ---
+
 
 def get_project_notifications(project_id: str) -> dict | None:
     """Return Telegram config for a project, or None if no row exists.
@@ -1514,20 +1551,30 @@ def save_project_notifications(
     either token or chat_id means "partially configured" — no notification
     will be sent until both are set.
     """
-    stmt = text(_upsert_sql(
-        "project_notifications",
-        ["project_id", "telegram_bot_token", "telegram_chat_id",
-         "throttle_minutes", "updated_at"],
-        conflict_columns=["project_id"],
-    ))
+    stmt = text(
+        _upsert_sql(
+            "project_notifications",
+            [
+                "project_id",
+                "telegram_bot_token",
+                "telegram_chat_id",
+                "throttle_minutes",
+                "updated_at",
+            ],
+            conflict_columns=["project_id"],
+        )
+    )
     with get_engine().begin() as conn:
-        conn.execute(stmt, {
-            "project_id": project_id,
-            "telegram_bot_token": telegram_bot_token,
-            "telegram_chat_id": telegram_chat_id,
-            "throttle_minutes": throttle_minutes,
-            "updated_at": _iso(datetime.now(UTC)),
-        })
+        conn.execute(
+            stmt,
+            {
+                "project_id": project_id,
+                "telegram_bot_token": telegram_bot_token,
+                "telegram_chat_id": telegram_chat_id,
+                "throttle_minutes": throttle_minutes,
+                "updated_at": _iso(datetime.now(UTC)),
+            },
+        )
 
 
 def delete_project_notifications(project_id: str) -> None:
@@ -1586,7 +1633,12 @@ def list_metric_tables(project_id: str) -> list[str]:
 # --- Notification history (#76) ---
 
 _NOTIFICATION_EVENT_TYPES = {
-    "anomaly", "schema_drift", "changepoint", "forecast", "root_cause", "test",
+    "anomaly",
+    "schema_drift",
+    "changepoint",
+    "forecast",
+    "root_cause",
+    "test",
 }
 
 
@@ -1678,7 +1730,7 @@ def get_notifications(
         SELECT id, ts, event_type, table_name, metric_name, message, status,
                error, chat_id, project_id
         FROM notifications
-        WHERE {' AND '.join(where)}
+        WHERE {" AND ".join(where)}
         ORDER BY ts DESC, id DESC
         LIMIT :limit OFFSET :offset
     """)
@@ -1738,9 +1790,8 @@ def count_notifications(
 
 # --- LLM explanation cache (#36) ---
 
-def get_cached_explanation(
-    table: str, metric: str, ts: str, ttl_hours: int = 24
-) -> dict | None:
+
+def get_cached_explanation(table: str, metric: str, ts: str, ttl_hours: int = 24) -> dict | None:
     """Return a cached LLM explanation if it exists and is within TTL, else None."""
     stmt = text("""
         SELECT explanation, suggested_fix, confidence, created_at
@@ -1780,20 +1831,22 @@ def save_explanation(
     """Upsert an LLM explanation into the cache."""
     sql = _upsert_sql(
         "llm_explanations",
-        ["table_name", "metric", "ts", "explanation",
-         "suggested_fix", "confidence", "created_at"],
+        ["table_name", "metric", "ts", "explanation", "suggested_fix", "confidence", "created_at"],
         conflict_columns=["table_name", "metric", "ts"],
     )
     with get_engine().begin() as conn:
-        conn.execute(text(sql), {
-            "table_name": table,
-            "metric": metric,
-            "ts": ts,
-            "explanation": explanation,
-            "suggested_fix": suggested_fix,
-            "confidence": float(confidence),
-            "created_at": _iso(datetime.now(UTC)),
-        })
+        conn.execute(
+            text(sql),
+            {
+                "table_name": table,
+                "metric": metric,
+                "ts": ts,
+                "explanation": explanation,
+                "suggested_fix": suggested_fix,
+                "confidence": float(confidence),
+                "created_at": _iso(datetime.now(UTC)),
+            },
+        )
 
 
 # --- Users (#49) -----------------------------------------------------------
@@ -1803,9 +1856,7 @@ class UserAlreadyExists(Exception):
     """Raised by create_user when the email is already registered."""
 
 
-def create_user(
-    user_id: str, email: str, password_hash: str
-) -> dict:
+def create_user(user_id: str, email: str, password_hash: str) -> dict:
     """Insert a new user. Raises UserAlreadyExists on duplicate email.
 
     Email must already be normalised (lower-cased, stripped) by the caller —
@@ -1889,18 +1940,19 @@ def set_user_admin(user_id: str, is_admin: bool) -> bool:
     если юзер существует, False если не найден.
     """
     with get_engine().begin() as conn:
-        result = conn.execute(text(
-            "UPDATE users SET is_admin = :v WHERE id = :id"
-        ), {"v": 1 if is_admin else 0, "id": user_id})
+        result = conn.execute(
+            text("UPDATE users SET is_admin = :v WHERE id = :id"),
+            {"v": 1 if is_admin else 0, "id": user_id},
+        )
     return (result.rowcount or 0) > 0
 
 
 def is_system_admin(user_id: str) -> bool:
     """Quick lookup для @admin_required: только bool, без полного user dict."""
     with get_engine().connect() as conn:
-        row = conn.execute(text(
-            "SELECT is_admin FROM users WHERE id = :id"
-        ), {"id": user_id}).fetchone()
+        row = conn.execute(
+            text("SELECT is_admin FROM users WHERE id = :id"), {"id": user_id}
+        ).fetchone()
     return bool(row[0]) if row else False
 
 
@@ -1923,7 +1975,9 @@ def update_user_password(user_id: str, password_hash: str) -> None:
 
 
 def create_password_reset_token(
-    user_id: str, token_hash: str, expires_at: datetime,
+    user_id: str,
+    token_hash: str,
+    expires_at: datetime,
 ) -> None:
     """Persist a freshly-issued reset token row. ``token_hash`` is
     HMAC-SHA256(SECRET_KEY, raw_token) — raw token is emailed and never
@@ -1935,10 +1989,15 @@ def create_password_reset_token(
     )
     now = datetime.now(UTC)
     with get_engine().begin() as conn:
-        conn.execute(stmt, {
-            "uid": user_id, "h": token_hash,
-            "exp": _iso(expires_at), "created": _iso(now),
-        })
+        conn.execute(
+            stmt,
+            {
+                "uid": user_id,
+                "h": token_hash,
+                "exp": _iso(expires_at),
+                "created": _iso(now),
+            },
+        )
 
 
 def get_active_password_reset_token(token_hash: str) -> dict | None:
@@ -1955,9 +2014,13 @@ def get_active_password_reset_token(token_hash: str) -> dict | None:
         WHERE token_hash = :h AND used_at IS NULL AND expires_at > :now
     """)
     with get_engine().connect() as conn:
-        row = conn.execute(stmt, {
-            "h": token_hash, "now": _iso(datetime.now(UTC)),
-        }).fetchone()
+        row = conn.execute(
+            stmt,
+            {
+                "h": token_hash,
+                "now": _iso(datetime.now(UTC)),
+            },
+        ).fetchone()
     if row is None:
         return None
     return {
@@ -1982,19 +2045,23 @@ def consume_password_reset_token(token_hash: str) -> str | None:
     now_iso = _iso(datetime.now(UTC))
     with get_engine().begin() as conn:
         # 1. Try to claim the token — atomic UPDATE conditional on still-valid.
-        upd = conn.execute(text("""
+        upd = conn.execute(
+            text("""
             UPDATE password_reset_tokens
             SET used_at = :now
             WHERE token_hash = :h
               AND used_at IS NULL
               AND expires_at > :now
-        """), {"h": token_hash, "now": now_iso})
+        """),
+            {"h": token_hash, "now": now_iso},
+        )
         if (upd.rowcount or 0) == 0:
             return None
         # 2. Look up the user_id for the row we just claimed.
-        row = conn.execute(text(
-            "SELECT user_id FROM password_reset_tokens WHERE token_hash = :h"
-        ), {"h": token_hash}).fetchone()
+        row = conn.execute(
+            text("SELECT user_id FROM password_reset_tokens WHERE token_hash = :h"),
+            {"h": token_hash},
+        ).fetchone()
     return row[0] if row else None
 
 
@@ -2004,14 +2071,16 @@ def invalidate_password_reset_tokens(user_id: str) -> int:
     invalidates earlier links) and from successful /reset-password (so
     other concurrently-issued tokens can't be reused)."""
     stmt = text(
-        "UPDATE password_reset_tokens "
-        "SET used_at = :now "
-        "WHERE user_id = :uid AND used_at IS NULL"
+        "UPDATE password_reset_tokens SET used_at = :now WHERE user_id = :uid AND used_at IS NULL"
     )
     with get_engine().begin() as conn:
-        result = conn.execute(stmt, {
-            "uid": user_id, "now": _iso(datetime.now(UTC)),
-        })
+        result = conn.execute(
+            stmt,
+            {
+                "uid": user_id,
+                "now": _iso(datetime.now(UTC)),
+            },
+        )
     return int(result.rowcount or 0)
 
 
@@ -2021,10 +2090,7 @@ def invalidate_password_reset_tokens(user_id: str) -> int:
 def record_failed_login(email: str) -> None:
     """Append a failed login attempt for *email*. Caller must pass a
     normalised (lower-cased) email — storage doesn't transform it."""
-    stmt = text(
-        "INSERT INTO failed_login_attempts (email, attempted_at) "
-        "VALUES (:email, :ts)"
-    )
+    stmt = text("INSERT INTO failed_login_attempts (email, attempted_at) VALUES (:email, :ts)")
     with get_engine().begin() as conn:
         conn.execute(stmt, {"email": email, "ts": _iso(datetime.now(UTC))})
 
@@ -2033,8 +2099,7 @@ def count_recent_failed_logins(email: str, window: timedelta) -> int:
     """How many failed login attempts for *email* in the last *window*."""
     since = _iso(datetime.now(UTC) - window)
     stmt = text(
-        "SELECT COUNT(*) FROM failed_login_attempts "
-        "WHERE email = :email AND attempted_at >= :since"
+        "SELECT COUNT(*) FROM failed_login_attempts WHERE email = :email AND attempted_at >= :since"
     )
     with get_engine().connect() as conn:
         return int(conn.execute(stmt, {"email": email, "since": since}).scalar() or 0)
@@ -2073,23 +2138,32 @@ def create_project(project_id: str, user_id: str, name: str, slug: str) -> dict:
         raise ProjectSlugTaken(slug)
     now = _iso(datetime.now(UTC))
     payload = {
-        "id": project_id, "user_id": user_id,
-        "name": name, "slug": slug, "created_at": now,
+        "id": project_id,
+        "user_id": user_id,
+        "name": name,
+        "slug": slug,
+        "created_at": now,
     }
     try:
         with get_engine().begin() as conn:
-            conn.execute(text(
-                "INSERT INTO projects (id, user_id, name, slug, created_at) "
-                "VALUES (:id, :user_id, :name, :slug, :created_at)"
-            ), payload)
+            conn.execute(
+                text(
+                    "INSERT INTO projects (id, user_id, name, slug, created_at) "
+                    "VALUES (:id, :user_id, :name, :slug, :created_at)"
+                ),
+                payload,
+            )
             # #172: автор → owner row в project_members. Один INSERT в той
             # же транзакции. Без него new project не появится в
             # list_projects_for_user (она walks membership, не owners).
-            conn.execute(text(
-                "INSERT INTO project_members "
-                "(project_id, user_id, role, joined_at) "
-                "VALUES (:pid, :uid, 'owner', :ts)"
-            ), {"pid": project_id, "uid": user_id, "ts": now})
+            conn.execute(
+                text(
+                    "INSERT INTO project_members "
+                    "(project_id, user_id, role, joined_at) "
+                    "VALUES (:pid, :uid, 'owner', :ts)"
+                ),
+                {"pid": project_id, "uid": user_id, "ts": now},
+            )
     except IntegrityError:
         if get_project_by_slug(user_id, slug) is not None:
             raise ProjectSlugTaken(slug) from None
@@ -2118,20 +2192,26 @@ def get_project_by_slug(user_id: str, slug: str) -> dict | None:
     """
     # Шаг 1: owned shortcut.
     with get_engine().connect() as conn:
-        row = conn.execute(text(
-            "SELECT id, user_id, name, slug, created_at FROM projects "
-            "WHERE user_id = :user_id AND slug = :slug"
-        ), {"user_id": user_id, "slug": slug}).fetchone()
+        row = conn.execute(
+            text(
+                "SELECT id, user_id, name, slug, created_at FROM projects "
+                "WHERE user_id = :user_id AND slug = :slug"
+            ),
+            {"user_id": user_id, "slug": slug},
+        ).fetchone()
         if row is not None:
             return _row_to_project(row)
         # Шаг 2: shared lookup via project_members.
-        row = conn.execute(text(
-            "SELECT p.id, p.user_id, p.name, p.slug, p.created_at "
-            "FROM projects p "
-            "INNER JOIN project_members m ON m.project_id = p.id "
-            "WHERE m.user_id = :user_id AND p.slug = :slug "
-            "LIMIT 1"
-        ), {"user_id": user_id, "slug": slug}).fetchone()
+        row = conn.execute(
+            text(
+                "SELECT p.id, p.user_id, p.name, p.slug, p.created_at "
+                "FROM projects p "
+                "INNER JOIN project_members m ON m.project_id = p.id "
+                "WHERE m.user_id = :user_id AND p.slug = :slug "
+                "LIMIT 1"
+            ),
+            {"user_id": user_id, "slug": slug},
+        ).fetchone()
     return _row_to_project(row)
 
 
@@ -2140,13 +2220,16 @@ def get_project_by_id(user_id: str, project_id: str) -> dict | None:
     OR a member. Defends against horizontal escalation — random project_id
     guesses still don't leak data."""
     with get_engine().connect() as conn:
-        row = conn.execute(text(
-            "SELECT p.id, p.user_id, p.name, p.slug, p.created_at "
-            "FROM projects p "
-            "LEFT JOIN project_members m "
-            "  ON m.project_id = p.id AND m.user_id = :user_id "
-            "WHERE p.id = :id AND (p.user_id = :user_id OR m.user_id IS NOT NULL)"
-        ), {"id": project_id, "user_id": user_id}).fetchone()
+        row = conn.execute(
+            text(
+                "SELECT p.id, p.user_id, p.name, p.slug, p.created_at "
+                "FROM projects p "
+                "LEFT JOIN project_members m "
+                "  ON m.project_id = p.id AND m.user_id = :user_id "
+                "WHERE p.id = :id AND (p.user_id = :user_id OR m.user_id IS NOT NULL)"
+            ),
+            {"id": project_id, "user_id": user_id},
+        ).fetchone()
     return _row_to_project(row)
 
 
@@ -2161,18 +2244,18 @@ def list_projects_for_user(user_id: str) -> list[dict]:
     значение из project_members. UI потом покажет бейджик роли.
     """
     with get_engine().connect() as conn:
-        rows = conn.execute(text("""
+        rows = conn.execute(
+            text("""
             SELECT p.id, p.user_id, p.name, p.slug, p.created_at,
                    COALESCE(m.role, 'owner') AS role
             FROM projects p
             INNER JOIN project_members m
               ON m.project_id = p.id AND m.user_id = :user_id
             ORDER BY p.created_at
-        """), {"user_id": user_id}).fetchall()
-    return [
-        {**(_row_to_project(r) or {}), "role": r[5]}
-        for r in rows
-    ]
+        """),
+            {"user_id": user_id},
+        ).fetchall()
+    return [{**(_row_to_project(r) or {}), "role": r[5]} for r in rows]
 
 
 # --- Project membership (#172) ---------------------------------------------
@@ -2186,7 +2269,9 @@ class InvalidMemberRole(Exception):
 
 
 def add_project_member(
-    project_id: str, user_id: str, role: str = "viewer",
+    project_id: str,
+    user_id: str,
+    role: str = "viewer",
 ) -> dict:
     """Upsert a (project, user, role) row in project_members.
 
@@ -2205,18 +2290,24 @@ def add_project_member(
     existing = get_member_role(project_id, user_id)
     if existing == "owner" and role != "owner":
         raise InvalidMemberRole("cannot downgrade owner via add_project_member")
-    stmt = text(_upsert_sql(
-        "project_members",
-        ["project_id", "user_id", "role", "joined_at"],
-        conflict_columns=["project_id", "user_id"],
-    ))
+    stmt = text(
+        _upsert_sql(
+            "project_members",
+            ["project_id", "user_id", "role", "joined_at"],
+            conflict_columns=["project_id", "user_id"],
+        )
+    )
     with get_engine().begin() as conn:
-        conn.execute(stmt, {
-            "project_id": project_id, "user_id": user_id,
-            "role": role, "joined_at": now,
-        })
-    return {"project_id": project_id, "user_id": user_id, "role": role,
-            "joined_at": now}
+        conn.execute(
+            stmt,
+            {
+                "project_id": project_id,
+                "user_id": user_id,
+                "role": role,
+                "joined_at": now,
+            },
+        )
+    return {"project_id": project_id, "user_id": user_id, "role": role, "joined_at": now}
 
 
 def remove_project_member(project_id: str, user_id: str) -> bool:
@@ -2226,10 +2317,10 @@ def remove_project_member(project_id: str, user_id: str) -> bool:
     if get_member_role(project_id, user_id) == "owner":
         raise InvalidMemberRole("cannot remove project owner")
     with get_engine().begin() as conn:
-        result = conn.execute(text(
-            "DELETE FROM project_members "
-            "WHERE project_id = :pid AND user_id = :uid"
-        ), {"pid": project_id, "uid": user_id})
+        result = conn.execute(
+            text("DELETE FROM project_members WHERE project_id = :pid AND user_id = :uid"),
+            {"pid": project_id, "uid": user_id},
+        )
     return (result.rowcount or 0) > 0
 
 
@@ -2237,27 +2328,32 @@ def get_member_role(project_id: str, user_id: str) -> str | None:
     """Return the user's role on the project, or None if no membership.
     Используется на всех access-проверках вместо ownership."""
     with get_engine().connect() as conn:
-        row = conn.execute(text(
-            "SELECT role FROM project_members "
-            "WHERE project_id = :pid AND user_id = :uid"
-        ), {"pid": project_id, "uid": user_id}).fetchone()
+        row = conn.execute(
+            text("SELECT role FROM project_members WHERE project_id = :pid AND user_id = :uid"),
+            {"pid": project_id, "uid": user_id},
+        ).fetchone()
     return row[0] if row else None
 
 
 def list_project_members(project_id: str) -> list[dict]:
     """All members of a project with their roles + email/joined timestamp."""
     with get_engine().connect() as conn:
-        rows = conn.execute(text("""
+        rows = conn.execute(
+            text("""
             SELECT pm.user_id, u.email, pm.role, pm.joined_at
             FROM project_members pm
             INNER JOIN users u ON u.id = pm.user_id
             WHERE pm.project_id = :pid
             ORDER BY pm.joined_at
-        """), {"pid": project_id}).fetchall()
+        """),
+            {"pid": project_id},
+        ).fetchall()
     return [
         {
-            "user_id": r[0], "email": r[1],
-            "role": r[2], "joined_at": _normalize_ts(r[3]),
+            "user_id": r[0],
+            "email": r[1],
+            "role": r[2],
+            "joined_at": _normalize_ts(r[3]),
         }
         for r in rows
     ]
@@ -2333,7 +2429,9 @@ class InviteAlreadyUsed(InviteError):
 
 
 def create_invite_token(
-    project_id: str, role: str, created_by: str,
+    project_id: str,
+    role: str,
+    created_by: str,
     ttl: timedelta = INVITE_TTL,
 ) -> dict:
     """Mint and persist a new invite token. Returns the inserted row.
@@ -2345,9 +2443,7 @@ def create_invite_token(
     that for room without breaking the URL pattern.
     """
     if role not in ("editor", "viewer"):
-        raise InvalidMemberRole(
-            f"invite role must be editor|viewer, got {role!r}"
-        )
+        raise InvalidMemberRole(f"invite role must be editor|viewer, got {role!r}")
     import secrets
 
     token = secrets.token_hex(16)  # 32-char hex per acceptance criteria
@@ -2433,13 +2529,16 @@ def consume_invite(token: str, user_id: str) -> dict:
 
     now_iso = _iso(now)
     with get_engine().begin() as conn:
-        result = conn.execute(text("""
+        result = conn.execute(
+            text("""
             UPDATE project_invites
             SET used_at = :now
             WHERE token = :token
               AND used_at IS NULL
               AND expires_at > :now
-        """), {"now": now_iso, "token": token})
+        """),
+            {"now": now_iso, "token": token},
+        )
         if (result.rowcount or 0) == 0:
             # Race: someone else claimed it between get and update.
             raise InviteAlreadyUsed(token)
@@ -2540,19 +2639,13 @@ def _row_to_connection(row) -> dict | None:
         "table_allowlist": row[8],
         "table_denylist": row[9],
         "max_tables_per_tick": int(row[10]) if row[10] is not None else None,
-        "skip_tables_larger_than_gb": (
-            float(row[11]) if row[11] is not None else None
-        ),
-        "statement_timeout_ms": (
-            int(row[12]) if row[12] is not None else None
-        ),
+        "skip_tables_larger_than_gb": (float(row[11]) if row[11] is not None else None),
+        "statement_timeout_ms": (int(row[12]) if row[12] is not None else None),
         # #234: Iceberg production params. Token ciphertext is bytes (cast
         # from memoryview on Postgres); namespace/warehouse plain text.
         "iceberg_namespace": row[13],
         "iceberg_warehouse": row[14],
-        "iceberg_auth_token_encrypted": (
-            bytes(row[15]) if row[15] is not None else None
-        ),
+        "iceberg_auth_token_encrypted": (bytes(row[15]) if row[15] is not None else None),
         # #233: collection mode. NULL on pre-migration rows is treated as
         # 'full' so the collector code path doesn't have to special-case it.
         "collection_mode": row[16] or "full",
@@ -2562,17 +2655,14 @@ def _row_to_connection(row) -> dict | None:
         "metadata_only_mode": bool(row[18]) if row[18] is not None else False,
         "last_probe_at": _normalize_ts(row[19]) if row[19] is not None else None,
         "last_probe_status": row[20],
-        "last_probe_tables_found": (
-            int(row[21]) if row[21] is not None else None
-        ),
+        "last_probe_tables_found": (int(row[21]) if row[21] is not None else None),
         "last_probe_error": row[22],
     }
 
 
 def list_connections_for_project(project_id: str) -> list[dict]:
     stmt = text(
-        f"SELECT {_CONNECTION_COLUMNS} FROM connections "
-        "WHERE project_id = :pid ORDER BY created_at"
+        f"SELECT {_CONNECTION_COLUMNS} FROM connections WHERE project_id = :pid ORDER BY created_at"
     )
     with get_engine().connect() as conn:
         rows = conn.execute(stmt, {"pid": project_id}).fetchall()
@@ -2584,8 +2674,7 @@ def get_connection(project_id: str, connection_id: str) -> dict | None:
     project even when the id is guessable. Defends against horizontal
     escalation via id-in-URL."""
     stmt = text(
-        f"SELECT {_CONNECTION_COLUMNS} FROM connections "
-        "WHERE id = :id AND project_id = :pid"
+        f"SELECT {_CONNECTION_COLUMNS} FROM connections WHERE id = :id AND project_id = :pid"
     )
     with get_engine().connect() as conn:
         row = conn.execute(stmt, {"id": connection_id, "pid": project_id}).fetchone()
@@ -2613,10 +2702,7 @@ def update_connection_safety(
     params["pid"] = project_id
     with get_engine().begin() as conn:
         result = conn.execute(
-            text(
-                f"UPDATE connections SET {set_clause} "
-                "WHERE id = :id AND project_id = :pid"
-            ),
+            text(f"UPDATE connections SET {set_clause} WHERE id = :id AND project_id = :pid"),
             params,
         )
     return (result.rowcount or 0) > 0
@@ -2625,19 +2711,21 @@ def update_connection_safety(
 # Whitelist of columns ``update_connection_safety`` may touch. DSN /
 # project_id / created_at are intentionally out — those go through their
 # own helpers (or create + delete) so an audit trail stays meaningful.
-_SAFETY_COLUMNS = frozenset({
-    "table_allowlist",
-    "table_denylist",
-    "max_tables_per_tick",
-    "skip_tables_larger_than_gb",
-    "statement_timeout_ms",
-    "collection_mode",
-    "iceberg_namespace",
-    "iceberg_warehouse",
-    "iceberg_auth_token_encrypted",
-    "iceberg_namespace_allowlist",
-    "metadata_only_mode",
-})
+_SAFETY_COLUMNS = frozenset(
+    {
+        "table_allowlist",
+        "table_denylist",
+        "max_tables_per_tick",
+        "skip_tables_larger_than_gb",
+        "statement_timeout_ms",
+        "collection_mode",
+        "iceberg_namespace",
+        "iceberg_warehouse",
+        "iceberg_auth_token_encrypted",
+        "iceberg_namespace_allowlist",
+        "metadata_only_mode",
+    }
+)
 
 
 def update_connection_basics(
@@ -2666,10 +2754,7 @@ def update_connection_basics(
     params: dict[str, object] = {**fields, "id": connection_id, "pid": project_id}
     with get_engine().begin() as conn:
         result = conn.execute(
-            text(
-                f"UPDATE connections SET {set_clause} "
-                "WHERE id = :id AND project_id = :pid"
-            ),
+            text(f"UPDATE connections SET {set_clause} WHERE id = :id AND project_id = :pid"),
             params,
         )
     return (result.rowcount or 0) > 0
@@ -2677,27 +2762,27 @@ def update_connection_basics(
 
 def delete_connection(project_id: str, connection_id: str) -> bool:
     """Hard delete. Returns True if a row was removed."""
-    stmt = text(
-        "DELETE FROM connections WHERE id = :id AND project_id = :pid"
-    )
+    stmt = text("DELETE FROM connections WHERE id = :id AND project_id = :pid")
     with get_engine().begin() as conn:
         result = conn.execute(stmt, {"id": connection_id, "pid": project_id})
     return (result.rowcount or 0) > 0
 
 
-def set_connection_active(
-    project_id: str, connection_id: str, is_active: bool
-) -> bool:
+def set_connection_active(project_id: str, connection_id: str, is_active: bool) -> bool:
     """Toggle the is_active flag. Returns True if a row was updated."""
     stmt = text("""
         UPDATE connections SET is_active = :v
         WHERE id = :id AND project_id = :pid
     """)
     with get_engine().begin() as conn:
-        result = conn.execute(stmt, {
-            "id": connection_id, "pid": project_id,
-            "v": 1 if is_active else 0,
-        })
+        result = conn.execute(
+            stmt,
+            {
+                "id": connection_id,
+                "pid": project_id,
+                "v": 1 if is_active else 0,
+            },
+        )
     return (result.rowcount or 0) > 0
 
 
@@ -2721,9 +2806,7 @@ def update_connection_probe(
         "pid": project_id,
         "last_probe_at": _iso(probed_at or datetime.now(UTC)),
         "last_probe_status": status,
-        "last_probe_tables_found": (
-            int(tables_found) if tables_found is not None else None
-        ),
+        "last_probe_tables_found": (int(tables_found) if tables_found is not None else None),
         "last_probe_error": None if status == "ok" else cleaned_error,
     }
     stmt = text("""
@@ -2757,13 +2840,16 @@ def save_collector_run(
             (:id, :project_id, :connection_id, :started_at, 'running', :mode)
     """)
     with get_engine().begin() as conn:
-        conn.execute(stmt, {
-            "id": run_id,
-            "project_id": project_id,
-            "connection_id": connection_id,
-            "started_at": _iso(started_at),
-            "mode": mode,
-        })
+        conn.execute(
+            stmt,
+            {
+                "id": run_id,
+                "project_id": project_id,
+                "connection_id": connection_id,
+                "started_at": _iso(started_at),
+                "mode": mode,
+            },
+        )
 
 
 def save_run_table(
@@ -2858,22 +2944,27 @@ def cleanup_stale_collector_runs(now: datetime | None = None) -> int:
     for run_id, started_at in rows:
         started = _parse_stored_ts(started_at)
         duration_ms = max(0, int((now - started).total_seconds() * 1000))
-        payload.append({
-            "id": run_id,
-            "finished_at": _iso(now),
-            "duration_ms": duration_ms,
-            "error_message": "collector process stopped before finishing the run",
-        })
+        payload.append(
+            {
+                "id": run_id,
+                "finished_at": _iso(now),
+                "duration_ms": duration_ms,
+                "error_message": "collector process stopped before finishing the run",
+            }
+        )
 
     with get_engine().begin() as conn:
-        conn.execute(text("""
+        conn.execute(
+            text("""
             UPDATE collector_runs
             SET status = 'failed',
                 finished_at = :finished_at,
                 duration_ms = :duration_ms,
                 error_message = :error_message
             WHERE id = :id AND status = 'running'
-        """), payload)
+        """),
+            payload,
+        )
     return len(payload)
 
 
@@ -2899,36 +2990,44 @@ def list_collector_runs(
         LIMIT :limit
     """)
     with get_engine().connect() as conn:
-        run_rows = conn.execute(runs_stmt, {
-            "project_id": project_id,
-            "connection_id": connection_id,
-            "limit": limit,
-        }).fetchall()
+        run_rows = conn.execute(
+            runs_stmt,
+            {
+                "project_id": project_id,
+                "connection_id": connection_id,
+                "limit": limit,
+            },
+        ).fetchall()
         run_ids = [r[0] for r in run_rows]
         table_rows = []
         if run_ids:
-            table_rows = conn.execute(text("""
+            table_rows = conn.execute(
+                text("""
                 SELECT run_id, id, table_name, status, metrics_collected,
                        rows_observed, duration_ms, skip_reason, error_message
                 FROM collector_run_tables
                 WHERE run_id IN :run_ids
                 ORDER BY table_name
-            """).bindparams(bindparam("run_ids", expanding=True)), {
-                "run_ids": run_ids,
-            }).fetchall()
+            """).bindparams(bindparam("run_ids", expanding=True)),
+                {
+                    "run_ids": run_ids,
+                },
+            ).fetchall()
 
     tables_by_run: dict[str, list[dict]] = {run_id: [] for run_id in run_ids}
     for row in table_rows:
-        tables_by_run[row[0]].append({
-            "id": row[1],
-            "table_name": row[2],
-            "status": row[3],
-            "metrics_collected": int(row[4] or 0),
-            "rows_observed": row[5],
-            "duration_ms": row[6],
-            "skip_reason": row[7],
-            "error_message": row[8],
-        })
+        tables_by_run[row[0]].append(
+            {
+                "id": row[1],
+                "table_name": row[2],
+                "status": row[3],
+                "metrics_collected": int(row[4] or 0),
+                "rows_observed": row[5],
+                "duration_ms": row[6],
+                "skip_reason": row[7],
+                "error_message": row[8],
+            }
+        )
 
     return [
         {
@@ -2978,10 +3077,13 @@ def list_last_runs_for_connections(
         WHERE rn = 1
     """).bindparams(bindparam("connection_ids", expanding=True))
     with get_engine().connect() as conn:
-        rows = conn.execute(stmt, {
-            "project_id": project_id,
-            "connection_ids": ids,
-        }).fetchall()
+        rows = conn.execute(
+            stmt,
+            {
+                "project_id": project_id,
+                "connection_ids": ids,
+            },
+        ).fetchall()
     return {
         row[2]: {
             "id": row[0],
@@ -3031,7 +3133,8 @@ def get_collector_run_detail(
         params["status"] = status_filter
 
     with get_engine().connect() as conn:
-        run_row = conn.execute(text("""
+        run_row = conn.execute(
+            text("""
             SELECT id, project_id, connection_id, started_at, finished_at, status,
                    mode, tables_total, tables_checked, tables_skipped,
                    metrics_collected, duration_ms, error_message
@@ -3039,18 +3142,24 @@ def get_collector_run_detail(
             WHERE id = :run_id
               AND project_id = :project_id
               AND connection_id = :connection_id
-        """), params).fetchone()
+        """),
+            params,
+        ).fetchone()
         if run_row is None:
             return None
 
-        rows_total = conn.execute(text(f"""
+        rows_total = conn.execute(
+            text(f"""
             SELECT COUNT(*)
             FROM collector_run_tables
             WHERE run_id = :run_id
               {status_sql}
-        """), params).scalar_one()
+        """),
+            params,
+        ).scalar_one()
 
-        table_rows = conn.execute(text(f"""
+        table_rows = conn.execute(
+            text(f"""
             SELECT id, table_name, status, metrics_collected, rows_observed,
                    duration_ms, skip_reason, error_message
             FROM collector_run_tables
@@ -3065,7 +3174,9 @@ def get_collector_run_detail(
               END,
               LOWER(table_name)
             LIMIT :limit
-        """), params).fetchall()
+        """),
+            params,
+        ).fetchall()
 
     run = run_row._mapping
     return {
@@ -3081,9 +3192,7 @@ def get_collector_run_detail(
         "tables_skipped": int(run["tables_skipped"] or 0),
         "metrics_collected": int(run["metrics_collected"] or 0),
         "duration_ms": run["duration_ms"],
-        "error_message": (
-            scrub_value(run["error_message"]) if run["error_message"] else None
-        ),
+        "error_message": (scrub_value(run["error_message"]) if run["error_message"] else None),
         "rows_total": int(rows_total or 0),
         "rows_limit": limit,
         "rows": [
@@ -3096,9 +3205,7 @@ def get_collector_run_detail(
                 "duration_ms": table["duration_ms"],
                 "skip_reason": table["skip_reason"],
                 "error_message": (
-                    scrub_value(table["error_message"])
-                    if table["error_message"]
-                    else None
+                    scrub_value(table["error_message"]) if table["error_message"] else None
                 ),
             }
             for table in (row._mapping for row in table_rows)

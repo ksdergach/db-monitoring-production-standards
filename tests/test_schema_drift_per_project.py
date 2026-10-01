@@ -7,6 +7,7 @@ Covers:
 - project_id is forwarded to get_schema_events() and notify_schema_drift()
 - projects without Telegram config are silently skipped
 """
+
 from __future__ import annotations
 
 import uuid
@@ -19,8 +20,10 @@ from cryptography.fernet import Fernet
 @pytest.fixture
 def db(tmp_path, monkeypatch):
     from app.config import settings
+
     monkeypatch.setattr(settings, "MONITOR_DB_URL", f"sqlite:///{tmp_path / 'm.db'}")
     import app.metrics_storage as ms
+
     monkeypatch.setattr(ms, "_engine", None)
     monkeypatch.setattr(ms, "_initialized", False)
     yield ms
@@ -32,6 +35,7 @@ def db(tmp_path, monkeypatch):
 def fernet_key(monkeypatch):
     monkeypatch.setenv("FERNET_KEY", Fernet.generate_key().decode())
     from app import crypto
+
     crypto.reset_for_tests()
 
 
@@ -52,6 +56,7 @@ def _seed_project(db) -> str:
 
 def _save_telegram(db, project_id: str, chat_id: str = "111", token: str = "tok") -> None:
     from app import crypto
+
     db.save_project_notifications(
         project_id,
         telegram_bot_token=crypto.encrypt_token(token),
@@ -95,7 +100,7 @@ def test_get_schema_events_does_not_cross_tenants(db):
 
 def test_get_schema_events_defaults_to_legacy(db):
     db.save_schema_events([_make_event("users")])  # no project_id → legacy
-    rows = db.get_schema_events("users")           # no project_id → legacy
+    rows = db.get_schema_events("users")  # no project_id → legacy
     assert len(rows) == 1
 
 
@@ -138,6 +143,7 @@ def test_notify_schema_drift_iterates_all_projects_including_legacy(db, monkeypa
     )
 
     from collectors.scheduler import _notify_schema_drift_events
+
     _notify_schema_drift_events()
 
     assert "legacy" in checked_projects
@@ -158,11 +164,14 @@ def test_notify_schema_drift_passes_project_id_to_notify(db, monkeypatch):
     monkeypatch.setattr("app.metrics_storage.list_project_ids_with_telegram", lambda: [pid])
     monkeypatch.setattr(
         "app.metrics_storage.get_schema_events",
-        lambda table, project_id="legacy", window=None: [_make_event(table)] if project_id == pid else [],
+        lambda table, project_id="legacy", window=None: [_make_event(table)]
+        if project_id == pid
+        else [],
     )
     monkeypatch.setattr("app.notifications.telegram.notify_schema_drift", fake_notify)
 
     from collectors.scheduler import _notify_schema_drift_events
+
     _notify_schema_drift_events()
 
     project_calls = [c for c in notify_calls if c["project_id"] == pid]
@@ -180,9 +189,12 @@ def test_notify_schema_drift_skips_project_without_telegram(db, monkeypatch):
         "app.metrics_storage.get_schema_events",
         lambda table, project_id="legacy", window=None: [_make_event(table)],
     )
-    monkeypatch.setattr("app.notifications.telegram.notify_schema_drift", lambda *a, **kw: notify_calls.append(1))
+    monkeypatch.setattr(
+        "app.notifications.telegram.notify_schema_drift", lambda *a, **kw: notify_calls.append(1)
+    )
 
     from collectors.scheduler import _notify_schema_drift_events
+
     _notify_schema_drift_events()
 
     assert notify_calls == []

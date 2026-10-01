@@ -53,11 +53,13 @@ def test_scrub_redacts_secret_keyed_dict_values():
 
 
 def test_scrub_handles_list_and_tuple():
-    event = {"breadcrumbs": [
-        "no secret here",
-        "postgresql://u:leaked@h/d",
-        ("nested", "postgresql://u:tupled@h/d"),
-    ]}
+    event = {
+        "breadcrumbs": [
+            "no secret here",
+            "postgresql://u:leaked@h/d",
+            ("nested", "postgresql://u:tupled@h/d"),
+        ]
+    }
     out = _scrub(event)
     serialised = str(out)
     assert "leaked" not in serialised
@@ -73,6 +75,7 @@ def test_before_send_returns_dict_not_none():
 
 def test_before_send_swallows_scrub_errors(monkeypatch):
     """Pathological event that breaks _scrub still ships SOMETHING."""
+
     def boom(_):
         raise RuntimeError("scrub broke")
 
@@ -89,6 +92,7 @@ def test_before_send_swallows_scrub_errors(monkeypatch):
 def test_init_sentry_noop_when_dsn_empty(monkeypatch):
     """Empty SENTRY_DSN → don't even import sentry_sdk, return False."""
     from app.config import settings
+
     monkeypatch.setattr(settings, "SENTRY_DSN", "")
     assert init_sentry() is False
 
@@ -96,8 +100,8 @@ def test_init_sentry_noop_when_dsn_empty(monkeypatch):
 def test_init_sentry_initialises_when_dsn_present(monkeypatch):
     """With a DSN configured we actually call sentry_sdk.init."""
     from app.config import settings as cfg
-    monkeypatch.setattr(cfg, "SENTRY_DSN",
-                        "https://public@sentry.example.com/1")
+
+    monkeypatch.setattr(cfg, "SENTRY_DSN", "https://public@sentry.example.com/1")
     monkeypatch.setattr(cfg, "SENTRY_ENVIRONMENT", "test-env")
 
     captured = {}
@@ -106,6 +110,7 @@ def test_init_sentry_initialises_when_dsn_present(monkeypatch):
         captured.update(kwargs)
 
     import sentry_sdk
+
     monkeypatch.setattr(sentry_sdk, "init", fake_init)
 
     assert init_sentry() is True
@@ -124,8 +129,8 @@ def test_init_sentry_against_real_sdk_does_not_crash(monkeypatch):
     or renames an option we use, this fails immediately.
     """
     from app.config import settings as cfg
-    monkeypatch.setattr(cfg, "SENTRY_DSN",
-                        "https://public@sentry.example.com/1")
+
+    monkeypatch.setattr(cfg, "SENTRY_DSN", "https://public@sentry.example.com/1")
     monkeypatch.setattr(cfg, "SENTRY_ENVIRONMENT", "test-real-init")
     # The DSN is fake — no events will ever be sent (the SDK only
     # validates DSN format, not reachability, during init).

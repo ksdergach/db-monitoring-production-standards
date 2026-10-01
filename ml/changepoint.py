@@ -10,6 +10,7 @@ window standard deviations — unitless, comparable across metrics), and
 ``value_before`` / ``value_after`` (window means around the cut). Score is what
 the UI uses to threshold "show me this annotation".
 """
+
 from __future__ import annotations
 
 import logging
@@ -23,6 +24,7 @@ from app.metrics_storage import get_metrics, save_changepoints
 try:  # pragma: no cover - optional heavy dep
     import numpy as np  # type: ignore
     import ruptures as rpt  # type: ignore
+
     _HAS_RUPTURES = True
 except Exception:  # pragma: no cover
     np = None  # type: ignore
@@ -33,16 +35,16 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_WINDOW_DAYS = 14
 MIN_POINTS = 8
-MIN_SCORE = 1.5            # below this, the shift is in the noise floor
-MIN_SEGMENT = 4            # don't treat first/last 4 points as a change-point
+MIN_SCORE = 1.5  # below this, the shift is in the noise floor
+MIN_SEGMENT = 4  # don't treat first/last 4 points as a change-point
 MIN_RELATIVE_SHIFT = 0.15  # secondary filter — ignore <15% shifts of the pre-mean
-LOCAL_WINDOW_POINTS = 48   # ≈ 12h at 15-min ticks; scope scoring locally so an
-                           # earlier shift doesn't pollute the before-window stats
-DEDUPE_WINDOW_HOURS = 72   # collapse PELT's hierarchical splits around the same real shift
-PELT_PENALTY = 6.0         # low enough to accept all 3 step-jumps in the seeded
-                           # 14-day demo (3 splits over 4 segments); MIN_SCORE +
-                           # MIN_RELATIVE_SHIFT + 72h _dedupe filter the noise
-                           # PELT's higher split count introduces.
+LOCAL_WINDOW_POINTS = 48  # ≈ 12h at 15-min ticks; scope scoring locally so an
+# earlier shift doesn't pollute the before-window stats
+DEDUPE_WINDOW_HOURS = 72  # collapse PELT's hierarchical splits around the same real shift
+PELT_PENALTY = 6.0  # low enough to accept all 3 step-jumps in the seeded
+# 14-day demo (3 splits over 4 segments); MIN_SCORE +
+# MIN_RELATIVE_SHIFT + 72h _dedupe filter the noise
+# PELT's higher split count introduces.
 
 # Cumulative metrics with natural linear growth — detrend before fitting PELT,
 # otherwise the bursty insert noise produces ghost change-points along the
@@ -152,9 +154,7 @@ def detect_changepoints(
     values = [float(r["value"]) for r in rows]
 
     detrend = metric in _DETREND_METRICS
-    indices = (
-        _detect_pelt(values, detrend=detrend) if _HAS_RUPTURES else _detect_cusum(values)
-    )
+    indices = _detect_pelt(values, detrend=detrend) if _HAS_RUPTURES else _detect_cusum(values)
 
     events: list[dict] = []
     for idx in indices:
@@ -166,15 +166,17 @@ def detect_changepoints(
         denom = max(abs(before), 1e-6)
         if abs(after - before) / denom < MIN_RELATIVE_SHIFT:
             continue
-        events.append({
-            "ts": timestamps[idx].isoformat(timespec="seconds"),
-            "_dt": timestamps[idx],
-            "table_name": table,
-            "metric_name": metric,
-            "score": round(score, 3),
-            "value_before": round(before, 4),
-            "value_after": round(after, 4),
-        })
+        events.append(
+            {
+                "ts": timestamps[idx].isoformat(timespec="seconds"),
+                "_dt": timestamps[idx],
+                "table_name": table,
+                "metric_name": metric,
+                "score": round(score, 3),
+                "value_before": round(before, 4),
+                "value_after": round(after, 4),
+            }
+        )
     return _dedupe(events)
 
 
@@ -200,8 +202,8 @@ def _dedupe(events: list[dict]) -> list[dict]:
     kept: list[dict] = []
     for e in events:
         same_direction = kept and (
-            (e["value_after"] > e["value_before"]) ==
-            (kept[-1]["value_after"] > kept[-1]["value_before"])
+            (e["value_after"] > e["value_before"])
+            == (kept[-1]["value_after"] > kept[-1]["value_before"])
         )
         within_window = kept and (
             e["_dt"] - kept[-1]["_dt"] <= timedelta(hours=DEDUPE_WINDOW_HOURS)
@@ -252,5 +254,7 @@ def detect_all(
                 new_events = save_changepoints(events, project_id=project_id)
                 counts["detected"] += len(new_events)
                 counts["events"].extend(new_events)
-    logger.info("Change-point sweep complete: %s", {k: v for k, v in counts.items() if k != "events"})
+    logger.info(
+        "Change-point sweep complete: %s", {k: v for k, v in counts.items() if k != "events"}
+    )
     return counts

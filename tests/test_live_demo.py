@@ -1,4 +1,5 @@
 """Tests for live_demo._run_collector_tick tenant scoping (#138)."""
+
 from unittest.mock import patch
 
 
@@ -10,6 +11,7 @@ def test_run_collector_tick_with_connection_calls_per_project():
         patch("app.metrics_storage.get_latest_metric", return_value=mock_latest),
     ):
         from scripts.live_demo import _run_collector_tick
+
         result = _run_collector_tick("proj-a", "conn-a")
 
     mock_collect.assert_called_once_with("proj-a", "conn-a")
@@ -23,6 +25,7 @@ def test_run_collector_tick_with_connection_reads_from_project():
         patch("app.metrics_storage.get_latest_metric", return_value=None) as mock_get,
     ):
         from scripts.live_demo import _run_collector_tick
+
         _run_collector_tick("proj-a", "conn-a")
 
     args = mock_get.call_args
@@ -36,6 +39,7 @@ def test_run_collector_tick_no_connection_uses_global_collector():
         patch("app.metrics_storage.get_latest_metric", return_value=None),
     ):
         from scripts.live_demo import _run_collector_tick
+
         _run_collector_tick("legacy", None)
 
     mock_collect.assert_called_once()
@@ -48,6 +52,7 @@ def test_run_collector_tick_no_connection_reads_from_legacy():
         patch("app.metrics_storage.get_latest_metric", return_value=None) as mock_get,
     ):
         from scripts.live_demo import _run_collector_tick
+
         _run_collector_tick("some-project", None)
 
     args = mock_get.call_args
@@ -57,10 +62,11 @@ def test_run_collector_tick_no_connection_reads_from_legacy():
 def test_live_demo_cli_requires_connection_id_for_non_legacy():
     """--project-id != legacy без --connection-id завершается с ошибкой."""
     import subprocess
+
     result = subprocess.run(
-        ["python", "-m", "scripts.live_demo",
-         "--project-id", "proj-x", "--dry-run"],
-        capture_output=True, text=True,
+        ["python", "-m", "scripts.live_demo", "--project-id", "proj-x", "--dry-run"],
+        capture_output=True,
+        text=True,
     )
     assert result.returncode != 0
     assert "connection-id" in result.stderr.lower()

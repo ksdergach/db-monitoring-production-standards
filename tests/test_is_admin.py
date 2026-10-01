@@ -100,7 +100,8 @@ def test_migration_adds_is_admin_column(tmp_path, monkeypatch):
 
     # Создаём pre-#220 users table без is_admin column.
     with eng.begin() as conn:
-        conn.execute(text("""
+        conn.execute(
+            text("""
             CREATE TABLE users (
                 id TEXT PRIMARY KEY,
                 email TEXT NOT NULL UNIQUE,
@@ -108,11 +109,14 @@ def test_migration_adds_is_admin_column(tmp_path, monkeypatch):
                 created_at TEXT NOT NULL,
                 last_login_at TEXT
             )
-        """))
-        conn.execute(text(
-            "INSERT INTO users (id, email, password_hash, created_at) "
-            "VALUES ('u1', 'legacy@x.io', 'h', '2026-01-01T00:00:00')"
-        ))
+        """)
+        )
+        conn.execute(
+            text(
+                "INSERT INTO users (id, email, password_hash, created_at) "
+                "VALUES ('u1', 'legacy@x.io', 'h', '2026-01-01T00:00:00')"
+            )
+        )
     eng.dispose()
 
     monkeypatch.setattr(cfg, "MONITOR_DB_URL", f"sqlite:///{db_path}")
@@ -144,20 +148,28 @@ def auth_client(tmp_path, monkeypatch):
     monkeypatch.setattr(ms, "_initialized", False)
 
     import app.db
+
     monkeypatch.setattr(app.db, "list_tables", lambda schema=None: [])
 
-    app = create_app({
-        "TESTING": True,
-        "LOGIN_DISABLED": False,
-        "WTF_CSRF_ENABLED": False,
-    })
+    app = create_app(
+        {
+            "TESTING": True,
+            "LOGIN_DISABLED": False,
+            "WTF_CSRF_ENABLED": False,
+        }
+    )
     return app.test_client()
 
 
 def _register_and_login(client, email="u@x.io", password="supersecret1"):
-    client.post("/auth/register", data={
-        "email": email, "password": password, "confirm": password,
-    })
+    client.post(
+        "/auth/register",
+        data={
+            "email": email,
+            "password": password,
+            "confirm": password,
+        },
+    )
     # Register уже логинит, но если нужен фреш — re-login.
 
 
@@ -189,9 +201,13 @@ def test_admin_gets_200_on_admin_jobs(auth_client):
 
     # Re-login чтобы фреш session с обновлённым is_admin.
     auth_client.post("/auth/logout")
-    auth_client.post("/auth/login", data={
-        "email": "admin@x.io", "password": "supersecret1",
-    })
+    auth_client.post(
+        "/auth/login",
+        data={
+            "email": "admin@x.io",
+            "password": "supersecret1",
+        },
+    )
     resp = auth_client.get("/admin/jobs")
     assert resp.status_code == 200
 
@@ -219,6 +235,7 @@ def test_auto_promote_makes_existing_user_admin(tmp_path, monkeypatch):
     monkeypatch.setattr(ms, "_engine", None)
     monkeypatch.setattr(ms, "_initialized", False)
     import app.db
+
     monkeypatch.setattr(app.db, "list_tables", lambda schema=None: [])
 
     # Создаём юзера ДО app start.
@@ -248,6 +265,7 @@ def test_auto_promote_silently_skips_when_user_missing(tmp_path, monkeypatch):
     monkeypatch.setattr(ms, "_initialized", False)
     monkeypatch.setattr(cfg, "ADMIN_EMAIL", "future@x.io")
     import app.db
+
     monkeypatch.setattr(app.db, "list_tables", lambda schema=None: [])
 
     # Не падать — это main acceptance.
@@ -267,6 +285,7 @@ def test_auto_promote_noop_when_admin_email_empty(tmp_path, monkeypatch):
     monkeypatch.setattr(ms, "_initialized", False)
     monkeypatch.setattr(cfg, "ADMIN_EMAIL", "")
     import app.db
+
     monkeypatch.setattr(app.db, "list_tables", lambda schema=None: [])
 
     create_app({"TESTING": True})  # init schema

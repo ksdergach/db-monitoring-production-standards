@@ -31,19 +31,24 @@ from app.metrics_storage import (
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument(
-        "--owner", required=True,
+        "--owner",
+        required=True,
         help="Email владельца проекта (чтобы резолвить slug per-owner)",
     )
     parser.add_argument(
-        "--slug", required=True,
+        "--slug",
+        required=True,
         help="Slug проекта в namespace владельца",
     )
     parser.add_argument(
-        "--email", required=True,
+        "--email",
+        required=True,
         help="Email пользователя, которого добавляем как члена",
     )
     parser.add_argument(
-        "--role", default="editor", choices=("editor", "viewer"),
+        "--role",
+        default="editor",
+        choices=("editor", "viewer"),
         help="Роль (owner создаётся через create_project, не здесь)",
     )
     args = parser.parse_args()

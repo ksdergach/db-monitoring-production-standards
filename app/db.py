@@ -93,9 +93,7 @@ class DBAdapter(ABC):
     @abstractmethod
     def column_nulls(self, table_name: str, schema: str) -> list[dict]: ...
 
-    def column_distribution(
-        self, table_name: str, schema: str, top_n: int = 20
-    ) -> list[dict]:
+    def column_distribution(self, table_name: str, schema: str, top_n: int = 20) -> list[dict]:
         """Top-N value frequencies per column. Default uses dialect-agnostic SQL.
 
         Returns a list of {column, data_type, total, buckets: [{value, count}, ...]}.
@@ -106,9 +104,7 @@ class DBAdapter(ABC):
         return _column_distribution_generic(self, table_name, schema, top_n)
 
 
-def _column_nulls_generic(
-    adapter: DBAdapter, table_name: str, schema: str
-) -> list[dict]:
+def _column_nulls_generic(adapter: DBAdapter, table_name: str, schema: str) -> list[dict]:
     """Default implementation using `COUNT(*) - COUNT(col)` (works in all dialects).
 
     Adapters can override this if the dialect supports something cheaper
@@ -119,10 +115,7 @@ def _column_nulls_generic(
         return []
 
     fqn = f"{adapter.quote_ident(schema)}.{adapter.quote_ident(table_name)}"
-    parts = ", ".join(
-        f"COUNT(*) - COUNT({adapter.quote_ident(c['name'])})"
-        for c in cols
-    )
+    parts = ", ".join(f"COUNT(*) - COUNT({adapter.quote_ident(c['name'])})" for c in cols)
     query = text(f"SELECT COUNT(*), {parts} FROM {fqn}")
     with get_engine().connect() as conn:
         row = conn.execute(query).fetchone()
@@ -139,7 +132,17 @@ def _column_nulls_generic(
     ]
 
 
-_SKIP_DIST_TYPE_FRAGMENTS = ("text", "json", "jsonb", "bytea", "blob", "clob", "xml", "array", "uuid",)
+_SKIP_DIST_TYPE_FRAGMENTS = (
+    "text",
+    "json",
+    "jsonb",
+    "bytea",
+    "blob",
+    "clob",
+    "xml",
+    "array",
+    "uuid",
+)
 
 
 def _is_distribution_skippable(data_type: str | None) -> bool:
@@ -173,12 +176,14 @@ def _column_distribution_generic(
                 continue
             buckets = [{"value": _to_str(r[0]), "count": int(r[1])} for r in rows]
             total = sum(b["count"] for b in buckets)
-            out.append({
-                "column": c["name"],
-                "data_type": c["type"],
-                "total": total,
-                "buckets": buckets,
-            })
+            out.append(
+                {
+                    "column": c["name"],
+                    "data_type": c["type"],
+                    "total": total,
+                    "buckets": buckets,
+                }
+            )
     return out
 
 
@@ -218,9 +223,7 @@ class PostgresAdapter(DBAdapter):
               AND relname = :table_name
         """)
         with get_engine().connect() as conn:
-            row = conn.execute(
-                query, {"schema": schema, "table_name": table_name}
-            ).fetchone()
+            row = conn.execute(query, {"schema": schema, "table_name": table_name}).fetchone()
         if not row:
             return None
         last_analyze = row[2] or row[3]
@@ -240,12 +243,8 @@ class PostgresAdapter(DBAdapter):
             ORDER BY ordinal_position
         """)
         with get_engine().connect() as conn:
-            rows = conn.execute(
-                query, {"schema": schema, "table_name": table_name}
-            ).fetchall()
-        return [
-            {"name": r[0], "type": r[1], "nullable": r[2] == "YES"} for r in rows
-        ]
+            rows = conn.execute(query, {"schema": schema, "table_name": table_name}).fetchall()
+        return [{"name": r[0], "type": r[1], "nullable": r[2] == "YES"} for r in rows]
 
     def column_nulls(self, table_name: str, schema: str) -> list[dict]:
         # Postgres-specific: FILTER is more idiomatic and lets the planner skip
@@ -288,7 +287,10 @@ class PostgresAdapter(DBAdapter):
         ]
 
     def column_nulls_sample(
-        self, table_name: str, schema: str, percent: float = 1.0,
+        self,
+        table_name: str,
+        schema: str,
+        percent: float = 1.0,
     ) -> tuple[list[dict], int]:
         """#233 sample mode: null_rate over a TABLESAMPLE SYSTEM(%) slice.
 
@@ -310,7 +312,8 @@ class PostgresAdapter(DBAdapter):
             cols = [
                 (r[0], r[1])
                 for r in conn.execute(
-                    cols_query, {"schema": schema, "table_name": table_name},
+                    cols_query,
+                    {"schema": schema, "table_name": table_name},
                 ).fetchall()
             ]
             if not cols:
@@ -326,10 +329,9 @@ class PostgresAdapter(DBAdapter):
             # accepts a literal. percent has been clamped above so injection
             # is not possible here; float-format it explicitly.
             pct = max(0.001, min(100.0, float(percent)))
-            row = conn.execute(text(
-                f"SELECT COUNT(*) AS total, {parts} "
-                f"FROM {fqn} TABLESAMPLE SYSTEM({pct})"
-            )).fetchone()
+            row = conn.execute(
+                text(f"SELECT COUNT(*) AS total, {parts} FROM {fqn} TABLESAMPLE SYSTEM({pct})")
+            ).fetchone()
 
         sample_size = int(row[0]) if row else 0
         if sample_size == 0:
@@ -344,7 +346,9 @@ class PostgresAdapter(DBAdapter):
         ], sample_size
 
     def column_nulls_approx(
-        self, table_name: str, schema: str,
+        self,
+        table_name: str,
+        schema: str,
     ) -> list[dict]:
         """#233 approx mode: read null_frac from pg_stats (last ANALYZE).
 
@@ -366,7 +370,8 @@ class PostgresAdapter(DBAdapter):
         """)
         with get_engine().connect() as conn:
             rows = conn.execute(
-                query, {"schema": schema, "table_name": table_name},
+                query,
+                {"schema": schema, "table_name": table_name},
             ).fetchall()
         return [
             {
@@ -410,9 +415,7 @@ class MySQLAdapter(DBAdapter):
               AND table_name = :table_name
         """)
         with get_engine().connect() as conn:
-            row = conn.execute(
-                query, {"schema": schema, "table_name": table_name}
-            ).fetchone()
+            row = conn.execute(query, {"schema": schema, "table_name": table_name}).fetchone()
         if not row:
             return None
         return {
@@ -431,12 +434,8 @@ class MySQLAdapter(DBAdapter):
             ORDER BY ordinal_position
         """)
         with get_engine().connect() as conn:
-            rows = conn.execute(
-                query, {"schema": schema, "table_name": table_name}
-            ).fetchall()
-        return [
-            {"name": r[0], "type": r[1], "nullable": r[2] == "YES"} for r in rows
-        ]
+            rows = conn.execute(query, {"schema": schema, "table_name": table_name}).fetchall()
+        return [{"name": r[0], "type": r[1], "nullable": r[2] == "YES"} for r in rows]
 
     def column_nulls(self, table_name: str, schema: str) -> list[dict]:
         return _column_nulls_generic(self, table_name, schema)
@@ -479,9 +478,7 @@ class ClickHouseAdapter(DBAdapter):
             WHERE t.database = :schema AND t.name = :table_name
         """)
         with get_engine().connect() as conn:
-            row = conn.execute(
-                query, {"schema": schema, "table_name": table_name}
-            ).fetchone()
+            row = conn.execute(query, {"schema": schema, "table_name": table_name}).fetchone()
         if not row:
             return None
         return {
@@ -500,9 +497,7 @@ class ClickHouseAdapter(DBAdapter):
             ORDER BY position
         """)
         with get_engine().connect() as conn:
-            rows = conn.execute(
-                query, {"schema": schema, "table_name": table_name}
-            ).fetchall()
+            rows = conn.execute(query, {"schema": schema, "table_name": table_name}).fetchall()
         return [{"name": r[0], "type": r[1], "nullable": bool(r[2])} for r in rows]
 
     def column_nulls(self, table_name: str, schema: str) -> list[dict]:
@@ -560,9 +555,7 @@ class IcebergAdapter(DBAdapter):
                 # localhost / 127.0.0.1 / ::1 → HTTP. Реальные домены → HTTPS.
                 _local = {"localhost", "127.0.0.1", "::1"}
                 use_tls = bool(
-                    parsed.hostname
-                    and parsed.hostname not in _local
-                    and "." in parsed.hostname
+                    parsed.hostname and parsed.hostname not in _local and "." in parsed.hostname
                 )
             scheme = "https" if use_tls else "http"
             props["uri"] = f"{scheme}://{parsed.netloc}"
@@ -605,8 +598,11 @@ class IcebergAdapter(DBAdapter):
         snapshot = table.current_snapshot()
         if snapshot is None:
             return {
-                "table_name": table_name, "schema": schema,
-                "row_count": 0, "size_bytes": 0, "last_analyze": None,
+                "table_name": table_name,
+                "schema": schema,
+                "row_count": 0,
+                "size_bytes": 0,
+                "last_analyze": None,
             }
 
         summary = snapshot.summary
@@ -614,13 +610,12 @@ class IcebergAdapter(DBAdapter):
         # positional and equality deletes so row_count reflects live rows only.
         # total-equality-deletes counts delete entries, not matched rows — approximate for equality-delete tables (e.g. CDC).
         total = int(summary.get("total-records", 0) or 0)
-        deletes = int(summary.get("total-position-deletes", 0) or 0) + \
-                  int(summary.get("total-equality-deletes", 0) or 0)
+        deletes = int(summary.get("total-position-deletes", 0) or 0) + int(
+            summary.get("total-equality-deletes", 0) or 0
+        )
         row_count = max(0, total - deletes)
         size_bytes = int(summary.get("total-files-size", 0) or 0)
-        last_analyze = datetime.fromtimestamp(
-            snapshot.timestamp_ms / 1000, tz=UTC
-        ).isoformat()
+        last_analyze = datetime.fromtimestamp(snapshot.timestamp_ms / 1000, tz=UTC).isoformat()
         return {
             "table_name": table_name,
             "schema": schema,
@@ -660,7 +655,7 @@ class IcebergAdapter(DBAdapter):
             return []
 
         iceberg_schema = table.schema()
-        null_counts: dict[int, int] = {}   # field_id → total null count
+        null_counts: dict[int, int] = {}  # field_id → total null count
         value_counts: dict[int, int] = {}  # field_id → total value count
 
         for manifest in snapshot.manifests(table.io):
@@ -678,17 +673,17 @@ class IcebergAdapter(DBAdapter):
             fid = field.field_id
             nulls = null_counts.get(fid, 0)
             total = value_counts.get(fid, 0)
-            result.append({
-                "column": field.name,
-                "data_type": str(field.field_type),
-                "null_count": nulls,
-                "null_rate": round(nulls / total, 4) if total else 0.0,
-            })
+            result.append(
+                {
+                    "column": field.name,
+                    "data_type": str(field.field_type),
+                    "null_count": nulls,
+                    "null_rate": round(nulls / total, 4) if total else 0.0,
+                }
+            )
         return result
 
-    def column_distribution(
-        self, table_name: str, schema: str, top_n: int = 20
-    ) -> list[dict]:
+    def column_distribution(self, table_name: str, schema: str, top_n: int = 20) -> list[dict]:
         # Iceberg manifest metadata has no distribution info. A full PyArrow
         # scan would defeat the no-scan value prop on large tables.
         return []
@@ -748,8 +743,7 @@ def get_adapter() -> DBAdapter:
         cls = _ADAPTERS.get(key)
         if cls is None:
             raise ValueError(
-                f"Unsupported database backend: {key!r}. "
-                f"Supported: {sorted(_ADAPTERS)}"
+                f"Unsupported database backend: {key!r}. Supported: {sorted(_ADAPTERS)}"
             )
         _adapter = _make_adapter(cls, url)
     return _adapter
@@ -772,10 +766,7 @@ def make_adapter_for_url(
     key = _adapter_key(url)
     cls = _ADAPTERS.get(key)
     if cls is None:
-        raise ValueError(
-            f"Unsupported database backend: {key!r}. "
-            f"Supported: {sorted(_ADAPTERS)}"
-        )
+        raise ValueError(f"Unsupported database backend: {key!r}. Supported: {sorted(_ADAPTERS)}")
     return _make_adapter(cls, url, warehouse=warehouse, auth_token=auth_token)
 
 
@@ -795,9 +786,5 @@ def column_nulls(table_name: str, schema: str | None = None) -> list[dict]:
     return get_adapter().column_nulls(table_name, schema or settings.MONITORED_SCHEMA)
 
 
-def column_distribution(
-    table_name: str, schema: str | None = None, top_n: int = 20
-) -> list[dict]:
-    return get_adapter().column_distribution(
-        table_name, schema or settings.MONITORED_SCHEMA, top_n
-    )
+def column_distribution(table_name: str, schema: str | None = None, top_n: int = 20) -> list[dict]:
+    return get_adapter().column_distribution(table_name, schema or settings.MONITORED_SCHEMA, top_n)

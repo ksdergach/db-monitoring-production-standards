@@ -42,7 +42,10 @@ def _new_project(storage) -> str:
     uid = uuid.uuid4().hex
     storage.create_user(user_id=uid, email=f"u-{uid[:6]}@x.io", password_hash="x")
     project = storage.create_project(
-        project_id=uuid.uuid4().hex, user_id=uid, name="P", slug=f"p-{uid[:6]}",
+        project_id=uuid.uuid4().hex,
+        user_id=uid,
+        name="P",
+        slug=f"p-{uid[:6]}",
     )
     return project["id"]
 
@@ -88,18 +91,29 @@ def test_gate_drops_small_delta(storage):
     # Засеять 7 точек со значениями около 100 (median=100).
     now = datetime.now(UTC)
     rows = [
-        {"ts": now - timedelta(hours=h), "table_name": "users",
-         "metric_name": "row_count", "value": 100.0 + (h % 5)}
+        {
+            "ts": now - timedelta(hours=h),
+            "table_name": "users",
+            "metric_name": "row_count",
+            "value": 100.0 + (h % 5),
+        }
         for h in range(1, 8)
     ]
     storage.save_metrics(rows, pid)
 
     # Аномальная точка с value=103 (3% от baseline).
     anomaly_ts = now.isoformat(timespec="seconds")
-    storage.save_metrics([{
-        "ts": now, "table_name": "users",
-        "metric_name": "row_count", "value": 103.0,
-    }], pid)
+    storage.save_metrics(
+        [
+            {
+                "ts": now,
+                "table_name": "users",
+                "metric_name": "row_count",
+                "value": 103.0,
+            }
+        ],
+        pid,
+    )
 
     anomaly = {"ts": anomaly_ts, "score": -0.40, "is_anomaly": 1}
     assert _passes_alert_quality_gate("users", anomaly, pid) is False
@@ -113,17 +127,28 @@ def test_gate_passes_large_delta(storage):
 
     now = datetime.now(UTC)
     rows = [
-        {"ts": now - timedelta(hours=h), "table_name": "users",
-         "metric_name": "row_count", "value": 100.0}
+        {
+            "ts": now - timedelta(hours=h),
+            "table_name": "users",
+            "metric_name": "row_count",
+            "value": 100.0,
+        }
         for h in range(1, 8)
     ]
     storage.save_metrics(rows, pid)
 
     anomaly_ts = now.isoformat(timespec="seconds")
-    storage.save_metrics([{
-        "ts": now, "table_name": "users",
-        "metric_name": "row_count", "value": 150.0,
-    }], pid)
+    storage.save_metrics(
+        [
+            {
+                "ts": now,
+                "table_name": "users",
+                "metric_name": "row_count",
+                "value": 150.0,
+            }
+        ],
+        pid,
+    )
 
     anomaly = {"ts": anomaly_ts, "score": -0.20, "is_anomaly": 1}
     assert _passes_alert_quality_gate("users", anomaly, pid) is True
@@ -154,12 +179,23 @@ def test_baseline_returns_none_for_sparse_history(storage):
     from collectors.per_project import _baseline_median_row_count
 
     pid = _new_project(storage)
-    storage.save_metrics([
-        {"ts": datetime.now(UTC), "table_name": "users",
-         "metric_name": "row_count", "value": 100.0},
-        {"ts": datetime.now(UTC) - timedelta(hours=1), "table_name": "users",
-         "metric_name": "row_count", "value": 110.0},
-    ], pid)
+    storage.save_metrics(
+        [
+            {
+                "ts": datetime.now(UTC),
+                "table_name": "users",
+                "metric_name": "row_count",
+                "value": 100.0,
+            },
+            {
+                "ts": datetime.now(UTC) - timedelta(hours=1),
+                "table_name": "users",
+                "metric_name": "row_count",
+                "value": 110.0,
+            },
+        ],
+        pid,
+    )
     assert _baseline_median_row_count("users", pid) is None
 
 
@@ -168,11 +204,18 @@ def test_baseline_computes_median(storage):
 
     pid = _new_project(storage)
     now = datetime.now(UTC)
-    storage.save_metrics([
-        {"ts": now - timedelta(hours=h), "table_name": "orders",
-         "metric_name": "row_count", "value": v}
-        for h, v in zip(range(1, 8), [10, 20, 30, 40, 50, 60, 70])
-    ], pid)
+    storage.save_metrics(
+        [
+            {
+                "ts": now - timedelta(hours=h),
+                "table_name": "orders",
+                "metric_name": "row_count",
+                "value": v,
+            }
+            for h, v in zip(range(1, 8), [10, 20, 30, 40, 50, 60, 70])
+        ],
+        pid,
+    )
     # 7 значений, median = 40
     assert _baseline_median_row_count("orders", pid) == 40.0
 
@@ -202,8 +245,11 @@ def test_notify_skipped_when_gate_drops_anomaly(storage, monkeypatch):
     monkeypatch.setattr(
         "ml.anomaly_detector.score_table",
         lambda table, window_days=14, project_id="legacy": [
-            {"ts": datetime.now(UTC).isoformat(timespec="seconds"),
-             "score": -0.001, "is_anomaly": 1}
+            {
+                "ts": datetime.now(UTC).isoformat(timespec="seconds"),
+                "score": -0.001,
+                "is_anomaly": 1,
+            }
         ],
     )
 
@@ -231,8 +277,7 @@ def test_notify_fires_when_gate_passes(storage, monkeypatch):
     monkeypatch.setattr(
         "ml.anomaly_detector.score_table",
         lambda table, window_days=14, project_id="legacy": [
-            {"ts": datetime.now(UTC).isoformat(timespec="seconds"),
-             "score": -0.30, "is_anomaly": 1}
+            {"ts": datetime.now(UTC).isoformat(timespec="seconds"), "score": -0.30, "is_anomaly": 1}
         ],
     )
 
@@ -250,14 +295,21 @@ def test_prompt_contains_detector_alignment_instruction(storage):
 
     pid = _new_project(storage)
     # Положим минимум данных чтобы prompt сгенерился.
-    storage.save_metrics([{
-        "ts": datetime.now(UTC), "table_name": "users",
-        "metric_name": "row_count", "value": 100.0,
-    }], pid)
+    storage.save_metrics(
+        [
+            {
+                "ts": datetime.now(UTC),
+                "table_name": "users",
+                "metric_name": "row_count",
+                "value": 100.0,
+            }
+        ],
+        pid,
+    )
 
-    prompt = _build_prompt("users", "row_count",
-                            datetime.now(UTC).isoformat(timespec="seconds"),
-                            project_id=pid)
+    prompt = _build_prompt(
+        "users", "row_count", datetime.now(UTC).isoformat(timespec="seconds"), project_id=pid
+    )
     assert "CONFIRMED this point is an anomaly" in prompt
     assert "do NOT write" in prompt or "do not write" in prompt.lower()
 
@@ -268,15 +320,20 @@ def test_prompt_contains_historical_block_when_data_available(storage):
 
     pid = _new_project(storage)
     now = datetime.now(UTC)
-    storage.save_metrics([
-        {"ts": now - timedelta(minutes=m), "table_name": "users",
-         "metric_name": "row_count", "value": 100.0 + m}
-        for m in range(0, 60, 10)  # 6 точек
-    ], pid)
+    storage.save_metrics(
+        [
+            {
+                "ts": now - timedelta(minutes=m),
+                "table_name": "users",
+                "metric_name": "row_count",
+                "value": 100.0 + m,
+            }
+            for m in range(0, 60, 10)  # 6 точек
+        ],
+        pid,
+    )
 
-    prompt = _build_prompt("users", "row_count",
-                            now.isoformat(timespec="seconds"),
-                            project_id=pid)
+    prompt = _build_prompt("users", "row_count", now.isoformat(timespec="seconds"), project_id=pid)
     assert "Historical context" in prompt
     assert "median" in prompt
     # Должна быть x-multiple — самое читаемое для LLM.
@@ -290,12 +347,17 @@ def test_prompt_skips_historical_block_when_sparse(storage):
 
     pid = _new_project(storage)
     now = datetime.now(UTC)
-    storage.save_metrics([{
-        "ts": now, "table_name": "users",
-        "metric_name": "row_count", "value": 100.0,
-    }], pid)
+    storage.save_metrics(
+        [
+            {
+                "ts": now,
+                "table_name": "users",
+                "metric_name": "row_count",
+                "value": 100.0,
+            }
+        ],
+        pid,
+    )
 
-    prompt = _build_prompt("users", "row_count",
-                            now.isoformat(timespec="seconds"),
-                            project_id=pid)
+    prompt = _build_prompt("users", "row_count", now.isoformat(timespec="seconds"), project_id=pid)
     assert "Historical context" not in prompt

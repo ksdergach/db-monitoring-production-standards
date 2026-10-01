@@ -80,13 +80,16 @@ def _with_project_adapter(conn_row: dict, fn):
     except crypto.InvalidToken:
         logger.warning(
             "project connection DSN ciphertext invalid: project=%s conn=%s",
-            conn_row.get("project_id"), conn_row.get("id"),
+            conn_row.get("project_id"),
+            conn_row.get("id"),
         )
         return []
     except Exception as exc:
         logger.warning(
             "project connection metadata fetch failed: project=%s conn=%s error=%s",
-            conn_row.get("project_id"), conn_row.get("id"), exc,
+            conn_row.get("project_id"),
+            conn_row.get("id"),
+            exc,
         )
         return []
     finally:
@@ -100,9 +103,7 @@ def _list_tables_for_dashboard(
     if project is None:
         return db.list_tables()
 
-    source_connections = (
-        connections if connections is not None else _project_connections(project)
-    )
+    source_connections = connections if connections is not None else _project_connections(project)
     conn_row = _active_connection(source_connections)
     if conn_row is None:
         return []
@@ -121,9 +122,7 @@ def _table_schema_for_dashboard(
     if project is None:
         return db.table_schema(table_name, schema=schema)
 
-    source_connections = (
-        connections if connections is not None else _project_connections(project)
-    )
+    source_connections = connections if connections is not None else _project_connections(project)
     conn_row = _active_connection(source_connections)
     if conn_row is None:
         return []
@@ -131,6 +130,7 @@ def _table_schema_for_dashboard(
         conn_row,
         lambda adapter, conn_schema: adapter.table_schema(table_name, conn_schema),
     )
+
 
 _NOTIFICATION_EVENT_LABELS = {
     "anomaly": "Аномалия",
@@ -156,7 +156,9 @@ bp = Blueprint(
 )
 
 
-def _build_project_status(project_id: str, connections: list[dict], has_metrics: bool = False) -> dict | None:
+def _build_project_status(
+    project_id: str, connections: list[dict], has_metrics: bool = False
+) -> dict | None:
     """Агрегированный статус проекта для status-first блока на обзоре.
     Возвращает None если подключений нет."""
     if not connections:
@@ -173,15 +175,28 @@ def _build_project_status(project_id: str, connections: list[dict], has_metrics:
     schema_changes_7d = 0
     try:
         from sqlalchemy import text as _text
+
         with get_engine().connect() as conn:
-            anomalies_7d = conn.execute(_text(
-                "SELECT COUNT(*) FROM anomaly_scores "
-                "WHERE project_id = :pid AND is_anomaly = 1 AND ts >= :since"
-            ), {"pid": project_id, "since": since_7d}).scalar() or 0
-            schema_changes_7d = conn.execute(_text(
-                "SELECT COUNT(*) FROM schema_events "
-                "WHERE project_id = :pid AND ts >= :since"
-            ), {"pid": project_id, "since": since_7d}).scalar() or 0
+            anomalies_7d = (
+                conn.execute(
+                    _text(
+                        "SELECT COUNT(*) FROM anomaly_scores "
+                        "WHERE project_id = :pid AND is_anomaly = 1 AND ts >= :since"
+                    ),
+                    {"pid": project_id, "since": since_7d},
+                ).scalar()
+                or 0
+            )
+            schema_changes_7d = (
+                conn.execute(
+                    _text(
+                        "SELECT COUNT(*) FROM schema_events "
+                        "WHERE project_id = :pid AND ts >= :since"
+                    ),
+                    {"pid": project_id, "since": since_7d},
+                ).scalar()
+                or 0
+            )
     except Exception as exc:
         logger.warning("project status query failed: %s", exc)
 
@@ -219,9 +234,7 @@ def overview():
     null_rates: list = []
     skip_tables = needs_first_project or needs_first_connection
     try:
-        schema_entries = [] if skip_tables else _list_tables_for_dashboard(
-            project, connections
-        )
+        schema_entries = [] if skip_tables else _list_tables_for_dashboard(project, connections)
     except Exception as exc:
         logger.warning("list_tables failed in overview: %s", exc)
         schema_entries = []
@@ -248,11 +261,14 @@ def overview():
         "overview.html",
         tables=tables,
         summary=summary,
-        ml_last_runs={} if (needs_first_project or needs_first_connection)
+        ml_last_runs={}
+        if (needs_first_project or needs_first_connection)
         else _ml_last_runs(project_id),
         needs_first_project=needs_first_project,
         needs_first_connection=needs_first_connection,
-        project_status=None if skip_tables else _build_project_status(project_id, connections, has_metrics=bool(null_rates)),
+        project_status=None
+        if skip_tables
+        else _build_project_status(project_id, connections, has_metrics=bool(null_rates)),
     )
 
 
@@ -331,30 +347,29 @@ def schema_view():
         for entry in _schema_entries:
             name = entry["table_name"]
             snapshot = _table_snapshot(name, entry["schema"])
-            schema_cols = _table_schema_for_dashboard(
-                project, connections, name, entry["schema"]
-            )
+            schema_cols = _table_schema_for_dashboard(project, connections, name, entry["schema"])
             cols = _columns_with_nulls(
-                name, entry["schema"], snapshot["row_count"],
+                name,
+                entry["schema"],
+                snapshot["row_count"],
                 schema_columns=schema_cols,
             )
-            drift_by_col = {
-                d["column"]: d
-                for d in get_drift_report(name, _current_project_id())
-            }
+            drift_by_col = {d["column"]: d for d in get_drift_report(name, _current_project_id())}
             for c in cols:
                 d = drift_by_col.get(c["name"])
                 c["drift"] = d
-            schema_events = get_schema_events(name, project_id=_current_project_id(), window=timedelta(days=30))
-            recent_count = sum(
-                1 for e in schema_events if _parse_event_ts(e["ts"]) >= cutoff
+            schema_events = get_schema_events(
+                name, project_id=_current_project_id(), window=timedelta(days=30)
             )
-            schemas.append({
-                **entry,
-                "columns": cols,
-                "schema_events": schema_events,
-                "recent_schema_changes": recent_count,
-            })
+            recent_count = sum(1 for e in schema_events if _parse_event_ts(e["ts"]) >= cutoff)
+            schemas.append(
+                {
+                    **entry,
+                    "columns": cols,
+                    "schema_events": schema_events,
+                    "recent_schema_changes": recent_count,
+                }
+            )
     return render_template(
         "schema.html",
         schemas=schemas,
@@ -413,8 +428,9 @@ def notifications_view():
 
     offset = (page - 1) * _NOTIFICATION_PAGE_SIZE
     filters = {"event_type": event_type, "status": status, "table_name": table}
-    items = get_notifications(limit=_NOTIFICATION_PAGE_SIZE, offset=offset,
-                              project_id=notif_project_id, **filters)
+    items = get_notifications(
+        limit=_NOTIFICATION_PAGE_SIZE, offset=offset, project_id=notif_project_id, **filters
+    )
     total = count_notifications(project_id=notif_project_id, **filters)
     pages = max(1, (total + _NOTIFICATION_PAGE_SIZE - 1) // _NOTIFICATION_PAGE_SIZE)
 
@@ -444,10 +460,7 @@ def table_detail(table_name: str):
     if project is not None and not has_connections:
         abort(404)
 
-    entries = {
-        t["table_name"]: t
-        for t in _list_tables_for_dashboard(project, connections)
-    }
+    entries = {t["table_name"]: t for t in _list_tables_for_dashboard(project, connections)}
     if table_name not in entries:
         abort(404)
     schema = entries[table_name]["schema"]
@@ -456,13 +469,12 @@ def table_detail(table_name: str):
     columns = _columns_with_nulls(
         table_name, schema, snapshot["row_count"], schema_columns=schema_cols
     )
-    drift_by_col = {
-        d["column"]: d
-        for d in get_drift_report(table_name, _current_project_id())
-    }
+    drift_by_col = {d["column"]: d for d in get_drift_report(table_name, _current_project_id())}
     for c in columns:
         c["drift"] = drift_by_col.get(c["name"])
-    schema_events = get_schema_events(table_name, project_id=_current_project_id(), window=timedelta(days=30))
+    schema_events = get_schema_events(
+        table_name, project_id=_current_project_id(), window=timedelta(days=30)
+    )
     return render_template(
         "table_detail.html",
         stats=snapshot,
@@ -480,9 +492,7 @@ def _columns_with_nulls(
 ) -> list[dict]:
     """Combine info_schema column list with stored per-column null counts."""
     cols = (
-        schema_columns
-        if schema_columns is not None
-        else db.table_schema(table_name, schema=schema)
+        schema_columns if schema_columns is not None else db.table_schema(table_name, schema=schema)
     )
     null_counts = get_latest_null_counts(table_name, _current_project_id())
     result = []

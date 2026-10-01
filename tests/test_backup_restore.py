@@ -26,8 +26,7 @@ def _seed_sqlite(path: Path, *, n_users: int = 5) -> None:
     con.executescript(
         "CREATE TABLE users(id INT PRIMARY KEY, email TEXT);\n"
         + "\n".join(
-            f"INSERT INTO users VALUES({i}, 'u{i}@example.com');"
-            for i in range(1, n_users + 1)
+            f"INSERT INTO users VALUES({i}, 'u{i}@example.com');" for i in range(1, n_users + 1)
         )
     )
     con.commit()
@@ -38,7 +37,11 @@ def _run(cmd: list[str], **env_extra: str) -> subprocess.CompletedProcess:
     env = os.environ.copy()
     env.update(env_extra)
     return subprocess.run(
-        cmd, env=env, capture_output=True, text=True, check=False,
+        cmd,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
 
@@ -177,6 +180,7 @@ def admin_client(tmp_path, monkeypatch):
     monkeypatch.setattr(storage, "_initialized", False)
 
     import app.db
+
     monkeypatch.setattr(app.db, "list_tables", lambda schema=None: [])
 
     app = create_app({"TESTING": True})
@@ -203,6 +207,4 @@ def test_rollback_checklist_renders(admin_client):
 
 
 # Skip backup tests on Windows-ish CI (just-in-case future portability check).
-pytestmark = pytest.mark.skipif(
-    shutil.which("bash") is None, reason="backup scripts require bash"
-)
+pytestmark = pytest.mark.skipif(shutil.which("bash") is None, reason="backup scripts require bash")

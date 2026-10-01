@@ -43,8 +43,11 @@ def _fernet_key(monkeypatch):
 def storage(tmp_path, monkeypatch):
     db_path = tmp_path / "safety.db"
     import app.metrics_storage as storage_mod
+
     monkeypatch.setattr(
-        storage_mod.settings, "MONITOR_DB_URL", f"sqlite:///{db_path}",
+        storage_mod.settings,
+        "MONITOR_DB_URL",
+        f"sqlite:///{db_path}",
     )
     monkeypatch.setattr(storage_mod, "_engine", None)
     monkeypatch.setattr(storage_mod, "_initialized", False)
@@ -54,10 +57,15 @@ def storage(tmp_path, monkeypatch):
 def _seed(storage, dsn: str):
     user_id = uuid.uuid4().hex
     storage.create_user(
-        user_id=user_id, email=f"u{user_id[:6]}@x.io", password_hash="x",
+        user_id=user_id,
+        email=f"u{user_id[:6]}@x.io",
+        password_hash="x",
     )
     project = storage.create_project(
-        project_id=uuid.uuid4().hex, user_id=user_id, name="P", slug="default",
+        project_id=uuid.uuid4().hex,
+        user_id=user_id,
+        name="P",
+        slug="default",
     )
     conn = storage.create_connection(
         connection_id=uuid.uuid4().hex,
@@ -74,6 +82,7 @@ def _seed(storage, dsn: str):
 def _set_safety(storage, conn_id, **kwargs):
     """Patch safety columns directly via SQL — there's no UI/route yet."""
     from sqlalchemy import text
+
     set_clause = ", ".join(f"{c} = :{c}" for c in kwargs)
     params = {**kwargs, "id": conn_id}
     with storage.get_engine().begin() as conn:
@@ -222,6 +231,7 @@ def _capture_create_engine_call(monkeypatch):
     connect_args passed in. Returns a dict reference that the test populates.
     """
     import sqlalchemy
+
     captured: dict = {}
     real = sqlalchemy.create_engine
 
@@ -230,6 +240,7 @@ def _capture_create_engine_call(monkeypatch):
         captured["kwargs"] = kwargs
         # Return a stub — _build_engine's caller doesn't actually use it.
         return mock.MagicMock(name="engine_stub")
+
     monkeypatch.setattr(sqlalchemy, "create_engine", fake_create_engine)
     return captured, real
 
@@ -272,8 +283,11 @@ def test_build_engine_mysql_ignores_statement_timeout(monkeypatch):
 
 def _stub_collector(rows):
     from collectors import metrics_collector
+
     return mock.patch.object(
-        metrics_collector.MetricsCollector, "collect", return_value=rows,
+        metrics_collector.MetricsCollector,
+        "collect",
+        return_value=rows,
     )
 
 
@@ -293,26 +307,48 @@ def test_skip_large_table_before_column_nulls(storage, caplog):
 
     def fake_stats(self, table_name, schema):
         if table_name == "huge":
-            return {"table_name": "huge", "schema": schema,
-                    "row_count": 0, "size_bytes": int(2e9), "last_analyze": None}
-        return {"table_name": "small", "schema": schema,
-                "row_count": 0, "size_bytes": 100, "last_analyze": None}
+            return {
+                "table_name": "huge",
+                "schema": schema,
+                "row_count": 0,
+                "size_bytes": int(2e9),
+                "last_analyze": None,
+            }
+        return {
+            "table_name": "small",
+            "schema": schema,
+            "row_count": 0,
+            "size_bytes": 100,
+            "last_analyze": None,
+        }
 
     collected: list[str] = []
 
     def fake_collect(self, table_name, ts=None):
         collected.append(table_name)
-        return [{"ts": datetime.now(UTC), "table_name": table_name,
-                 "metric_name": "row_count", "value": 1.0}]
+        return [
+            {
+                "ts": datetime.now(UTC),
+                "table_name": table_name,
+                "metric_name": "row_count",
+                "value": 1.0,
+            }
+        ]
 
     from collectors import metrics_collector
-    with mock.patch.object(db_mod.PostgresAdapter, "list_tables",
-                           autospec=True, side_effect=fake_list_tables), \
-         mock.patch.object(db_mod.PostgresAdapter, "table_stats",
-                           autospec=True, side_effect=fake_stats), \
-         mock.patch.object(metrics_collector.MetricsCollector, "collect",
-                           autospec=True, side_effect=fake_collect), \
-         caplog.at_level(logging.INFO):
+
+    with (
+        mock.patch.object(
+            db_mod.PostgresAdapter, "list_tables", autospec=True, side_effect=fake_list_tables
+        ),
+        mock.patch.object(
+            db_mod.PostgresAdapter, "table_stats", autospec=True, side_effect=fake_stats
+        ),
+        mock.patch.object(
+            metrics_collector.MetricsCollector, "collect", autospec=True, side_effect=fake_collect
+        ),
+        caplog.at_level(logging.INFO),
+    ):
         collect_for_connection(project["id"], conn["id"])
 
     assert collected == ["small"]
@@ -332,8 +368,13 @@ def test_skip_large_table_not_triggered_when_null(storage):
 
     def fake_stats(self, table_name, schema):
         stats_calls.append(table_name)
-        return {"table_name": table_name, "schema": schema,
-                "row_count": 0, "size_bytes": int(99e9), "last_analyze": None}
+        return {
+            "table_name": table_name,
+            "schema": schema,
+            "row_count": 0,
+            "size_bytes": int(99e9),
+            "last_analyze": None,
+        }
 
     collected: list[str] = []
 
@@ -342,12 +383,18 @@ def test_skip_large_table_not_triggered_when_null(storage):
         return []
 
     from collectors import metrics_collector
-    with mock.patch.object(db_mod.PostgresAdapter, "list_tables",
-                           autospec=True, side_effect=fake_list_tables), \
-         mock.patch.object(db_mod.PostgresAdapter, "table_stats",
-                           autospec=True, side_effect=fake_stats), \
-         mock.patch.object(metrics_collector.MetricsCollector, "collect",
-                           autospec=True, side_effect=fake_collect):
+
+    with (
+        mock.patch.object(
+            db_mod.PostgresAdapter, "list_tables", autospec=True, side_effect=fake_list_tables
+        ),
+        mock.patch.object(
+            db_mod.PostgresAdapter, "table_stats", autospec=True, side_effect=fake_stats
+        ),
+        mock.patch.object(
+            metrics_collector.MetricsCollector, "collect", autospec=True, side_effect=fake_collect
+        ),
+    ):
         collect_for_connection(project["id"], conn["id"])
 
     # collect() still runs; table_stats() not invoked when the skip is off.
@@ -376,10 +423,15 @@ def test_allowlist_drives_what_collect_runs(storage):
         return []
 
     from collectors import metrics_collector
-    with mock.patch.object(db_mod.PostgresAdapter, "list_tables",
-                           autospec=True, side_effect=fake_list_tables), \
-         mock.patch.object(metrics_collector.MetricsCollector, "collect",
-                           autospec=True, side_effect=fake_collect):
+
+    with (
+        mock.patch.object(
+            db_mod.PostgresAdapter, "list_tables", autospec=True, side_effect=fake_list_tables
+        ),
+        mock.patch.object(
+            metrics_collector.MetricsCollector, "collect", autospec=True, side_effect=fake_collect
+        ),
+    ):
         collect_for_connection(project["id"], conn["id"])
 
     assert collected == ["users"]

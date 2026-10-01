@@ -8,6 +8,7 @@ Raises InsufficientDataError when fewer than 2 points are available.
 Trained models are persisted via joblib under ``models/`` so the nightly
 retrain job can refresh them without blocking request-time predictions.
 """
+
 from __future__ import annotations
 
 import logging
@@ -21,6 +22,7 @@ from app.metrics_storage import get_changepoints, get_metrics
 
 try:  # pragma: no cover - optional heavy dep
     from prophet import Prophet  # type: ignore
+
     _HAS_PROPHET = True
 except Exception:  # pragma: no cover
     Prophet = None  # type: ignore
@@ -28,6 +30,7 @@ except Exception:  # pragma: no cover
 
 try:  # pragma: no cover - optional dep
     import joblib  # type: ignore
+
     _HAS_JOBLIB = True
 except Exception:  # pragma: no cover
     joblib = None  # type: ignore
@@ -97,8 +100,10 @@ def _fit_linear(points: list[tuple[datetime, float]]) -> LinearModel:
 
 def _fit_prophet(points: list[tuple[datetime, float]]):  # pragma: no cover - heavy
     import pandas as pd  # type: ignore
-    df = pd.DataFrame({"ds": [p[0].replace(tzinfo=None) for p in points],
-                       "y": [p[1] for p in points]})
+
+    df = pd.DataFrame(
+        {"ds": [p[0].replace(tzinfo=None) for p in points], "y": [p[1] for p in points]}
+    )
     m = Prophet(interval_width=0.95, daily_seasonality=False, weekly_seasonality=True)
     m.fit(df)
     return m
@@ -127,7 +132,7 @@ def _normalize_forecast_point(p: dict) -> dict:
     Called unconditionally after any shift so the invariants hold regardless
     of whether an anchor shift was applied.
     """
-    p["yhat"]       = max(0.0, p["yhat"])
+    p["yhat"] = max(0.0, p["yhat"])
     p["yhat_lower"] = max(0.0, p["yhat_lower"])
     p["yhat_upper"] = max(0.0, p["yhat_upper"])
     p["yhat_lower"] = min(p["yhat_lower"], p["yhat"])
@@ -152,7 +157,7 @@ def _anchor_shift(out: list[dict], last_value: float | None) -> list[dict]:
         shift = last_value - out[0]["yhat"]
         if shift != 0:
             for p in out:
-                p["yhat"]       = p["yhat"]       + shift
+                p["yhat"] = p["yhat"] + shift
                 p["yhat_lower"] = p["yhat_lower"] + shift
                 p["yhat_upper"] = p["yhat_upper"] + shift
     for p in out:
@@ -160,21 +165,24 @@ def _anchor_shift(out: list[dict], last_value: float | None) -> list[dict]:
     return out
 
 
-def _predict_prophet(model, horizon_days: int, last_value: float | None = None) -> list[dict]:  # pragma: no cover
-    future = model.make_future_dataframe(periods=horizon_days * 24, freq="h",
-                                          include_history=False)
+def _predict_prophet(
+    model, horizon_days: int, last_value: float | None = None
+) -> list[dict]:  # pragma: no cover
+    future = model.make_future_dataframe(periods=horizon_days * 24, freq="h", include_history=False)
     fc = model.predict(future)
     out = []
     for _, row in fc.iterrows():
         ds = row["ds"]
         if hasattr(ds, "to_pydatetime"):
             ds = ds.to_pydatetime()
-        out.append({
-            "ts": ds.replace(tzinfo=UTC).isoformat(timespec="seconds"),
-            "yhat": float(row["yhat"]),
-            "yhat_lower": max(0.0, float(row["yhat_lower"])),
-            "yhat_upper": float(row["yhat_upper"]),
-        })
+        out.append(
+            {
+                "ts": ds.replace(tzinfo=UTC).isoformat(timespec="seconds"),
+                "yhat": float(row["yhat"]),
+                "yhat_lower": max(0.0, float(row["yhat_lower"])),
+                "yhat_upper": float(row["yhat_upper"]),
+            }
+        )
     return _anchor_shift(out, last_value)
 
 
@@ -188,12 +196,14 @@ def _predict_linear(
     for h in range(1, horizon_days * 24 + 1):
         ts = last_ts + timedelta(hours=h)
         yhat, lo, hi = model.predict(ts)
-        out.append({
-            "ts": ts.astimezone(UTC).isoformat(timespec="seconds"),
-            "yhat": yhat,
-            "yhat_lower": max(0.0, lo),
-            "yhat_upper": hi,
-        })
+        out.append(
+            {
+                "ts": ts.astimezone(UTC).isoformat(timespec="seconds"),
+                "yhat": yhat,
+                "yhat_lower": max(0.0, lo),
+                "yhat_upper": hi,
+            }
+        )
     return _anchor_shift(out, last_value)
 
 
@@ -205,9 +215,7 @@ def _model_path(table: str, metric: str, project_id: str = "legacy") -> Path:
     return MODELS_DIR / f"{safe_project}__{safe}.joblib"
 
 
-def train(
-    table: str, metric: str = "row_count", project_id: str = "legacy"
-) -> dict[str, Any]:
+def train(table: str, metric: str = "row_count", project_id: str = "legacy") -> dict[str, Any]:
     """Fit a forecast model for (table, metric, project_id), persist it, return metadata."""
     cps = get_changepoints(table, metric, window=timedelta(days=60), project_id=project_id)
     last_cp = cps[-1] if cps else None
@@ -225,7 +233,8 @@ def train(
             # ticks in, hence the explicit `p[0] >= since` filter.
             days_since = int(cp_age_days) + 2
             points = [
-                p for p in _load_history(table, metric, days=days_since, project_id=project_id)
+                p
+                for p in _load_history(table, metric, days=days_since, project_id=project_id)
                 if p[0] >= since
             ]
             if len(points) < MIN_POINTS:
@@ -351,6 +360,7 @@ def retrain_all(
     """Retrain forecasts for every monitored table. Used by the nightly cron."""
     if tables is None:
         from app.db import list_tables  # local import to avoid app cycles
+
         tables = [t["table_name"] for t in list_tables()]
 
     counts = {"trained": 0, "skipped": 0, "errors": 0}

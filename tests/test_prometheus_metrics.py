@@ -48,13 +48,16 @@ def app_(tmp_path, monkeypatch):
     monkeypatch.setattr(storage, "_initialized", False)
 
     import app.db
+
     monkeypatch.setattr(app.db, "list_tables", lambda schema=None: [])
 
-    return create_app({
-        "TESTING": True,
-        "LOGIN_DISABLED": False,
-        "WTF_CSRF_ENABLED": False,
-    })
+    return create_app(
+        {
+            "TESTING": True,
+            "LOGIN_DISABLED": False,
+            "WTF_CSRF_ENABLED": False,
+        }
+    )
 
 
 @pytest.fixture
@@ -110,22 +113,18 @@ def test_http_requests_total_ticks_per_request(client):
     use ``/healthz`` here because target_db may be unreachable in CI,
     flipping the status to 503 and confusing the assertion.
     """
-    before = _get_value(http_requests_total,
-                        method="GET", endpoint="auth.login", status="200")
+    before = _get_value(http_requests_total, method="GET", endpoint="auth.login", status="200")
     client.get("/auth/login")
     client.get("/auth/login")
-    after = _get_value(http_requests_total,
-                       method="GET", endpoint="auth.login", status="200")
+    after = _get_value(http_requests_total, method="GET", endpoint="auth.login", status="200")
     assert after - before == 2
 
 
 def test_http_requests_total_records_4xx_separately(client):
     """A 404 increments under status=404, not status=200."""
-    before_404 = _get_value(http_requests_total,
-                            method="GET", endpoint="unknown", status="404")
+    before_404 = _get_value(http_requests_total, method="GET", endpoint="unknown", status="404")
     client.get("/this-does-not-exist")
-    after_404 = _get_value(http_requests_total,
-                           method="GET", endpoint="unknown", status="404")
+    after_404 = _get_value(http_requests_total, method="GET", endpoint="unknown", status="404")
     assert after_404 - before_404 == 1
 
 
@@ -135,11 +134,13 @@ def test_http_request_duration_histogram_observes(client):
     from app.instrumentation import http_request_duration_seconds
 
     samples_before = http_request_duration_seconds.labels(
-        method="GET", endpoint="auth.login",
+        method="GET",
+        endpoint="auth.login",
     )._sum.get()
     client.get("/auth/login")
     samples_after = http_request_duration_seconds.labels(
-        method="GET", endpoint="auth.login",
+        method="GET",
+        endpoint="auth.login",
     )._sum.get()
     assert samples_after > samples_before
 
@@ -162,27 +163,40 @@ def test_collector_runs_total_ok_on_success(app_, monkeypatch):
     uid = uuid.uuid4().hex
     storage.create_user(user_id=uid, email=f"u{uid[:5]}@x.io", password_hash="x")
     project = storage.create_project(
-        project_id=uuid.uuid4().hex, user_id=uid, name="P", slug="d",
+        project_id=uuid.uuid4().hex,
+        user_id=uid,
+        name="P",
+        slug="d",
     )
     conn = storage.create_connection(
-        connection_id=uuid.uuid4().hex, project_id=project["id"],
-        name="local", dsn_encrypted=crypto.encrypt_dsn("postgresql://u:p@h/d"),
-        schema_name="public", interval_minutes=15, is_active=True,
+        connection_id=uuid.uuid4().hex,
+        project_id=project["id"],
+        name="local",
+        dsn_encrypted=crypto.encrypt_dsn("postgresql://u:p@h/d"),
+        schema_name="public",
+        interval_minutes=15,
+        is_active=True,
     )
 
-    fake_rows = [{
-        "ts": datetime.now(UTC), "table_name": "users",
-        "metric_name": "row_count", "value": 1.0,
-    }]
+    fake_rows = [
+        {
+            "ts": datetime.now(UTC),
+            "table_name": "users",
+            "metric_name": "row_count",
+            "value": 1.0,
+        }
+    ]
 
     def fake_list_tables(self, schema):
         return [{"table_name": "users", "schema": schema}]
 
     before = _get_value(collector_runs_total, result="ok")
-    with mock.patch.object(metrics_collector.MetricsCollector, "collect",
-                           return_value=fake_rows), \
-         mock.patch.object(db_mod.PostgresAdapter, "list_tables",
-                           autospec=True, side_effect=fake_list_tables):
+    with (
+        mock.patch.object(metrics_collector.MetricsCollector, "collect", return_value=fake_rows),
+        mock.patch.object(
+            db_mod.PostgresAdapter, "list_tables", autospec=True, side_effect=fake_list_tables
+        ),
+    ):
         per_project.collect_for_connection(project["id"], conn["id"])
     after = _get_value(collector_runs_total, result="ok")
     assert after - before == 1
@@ -201,20 +215,26 @@ def test_collector_runs_total_error_on_failure(app_, monkeypatch):
     uid = uuid.uuid4().hex
     storage.create_user(user_id=uid, email=f"u{uid[:5]}@x.io", password_hash="x")
     project = storage.create_project(
-        project_id=uuid.uuid4().hex, user_id=uid, name="P", slug="d",
+        project_id=uuid.uuid4().hex,
+        user_id=uid,
+        name="P",
+        slug="d",
     )
     conn = storage.create_connection(
-        connection_id=uuid.uuid4().hex, project_id=project["id"],
-        name="local", dsn_encrypted=crypto.encrypt_dsn("postgresql://u:p@h/d"),
-        schema_name="public", interval_minutes=15, is_active=True,
+        connection_id=uuid.uuid4().hex,
+        project_id=project["id"],
+        name="local",
+        dsn_encrypted=crypto.encrypt_dsn("postgresql://u:p@h/d"),
+        schema_name="public",
+        interval_minutes=15,
+        is_active=True,
     )
 
     def boom(self, schema):
         raise RuntimeError("adapter boom")
 
     before = _get_value(collector_runs_total, result="error")
-    with mock.patch.object(db_mod.PostgresAdapter, "list_tables",
-                           autospec=True, side_effect=boom):
+    with mock.patch.object(db_mod.PostgresAdapter, "list_tables", autospec=True, side_effect=boom):
         per_project.collect_for_connection(project["id"], conn["id"])
     after = _get_value(collector_runs_total, result="error")
     assert after - before == 1
@@ -226,22 +246,23 @@ def test_collector_runs_total_error_on_failure(app_, monkeypatch):
 def test_failed_login_attempts_total_bumps_on_wrong_password(client):
     """Wrong password → counter +1. Successful login → no bump."""
     # Register so the email exists.
-    client.post("/auth/register", data={
-        "email": "u@example.com",
-        "password": "supersecret1",
-        "confirm": "supersecret1",
-    })
+    client.post(
+        "/auth/register",
+        data={
+            "email": "u@example.com",
+            "password": "supersecret1",
+            "confirm": "supersecret1",
+        },
+    )
     client.post("/auth/logout")
 
     before = _get_value(failed_login_attempts_total)
-    client.post("/auth/login",
-                data={"email": "u@example.com", "password": "wrong-pass"})
+    client.post("/auth/login", data={"email": "u@example.com", "password": "wrong-pass"})
     after_bad = _get_value(failed_login_attempts_total)
     assert after_bad - before == 1
 
     # Successful login: counter does NOT move.
-    client.post("/auth/login",
-                data={"email": "u@example.com", "password": "supersecret1"})
+    client.post("/auth/login", data={"email": "u@example.com", "password": "supersecret1"})
     after_good = _get_value(failed_login_attempts_total)
     assert after_good == after_bad
 
@@ -251,7 +272,6 @@ def test_failed_login_attempts_bumps_on_unknown_email(client):
     means we shouldn't distinguish counters either, otherwise scrape
     becomes an oracle for email-enumeration."""
     before = _get_value(failed_login_attempts_total)
-    client.post("/auth/login",
-                data={"email": "ghost@example.com", "password": "x" * 12})
+    client.post("/auth/login", data={"email": "ghost@example.com", "password": "x" * 12})
     after = _get_value(failed_login_attempts_total)
     assert after - before == 1

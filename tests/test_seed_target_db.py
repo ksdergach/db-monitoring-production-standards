@@ -49,6 +49,7 @@ def mock_engine():
 
 # --- _chunks ---
 
+
 def test_chunks_basic():
     assert list(_chunks(list(range(7)), 3)) == [[0, 1, 2], [3, 4, 5], [6]]
 
@@ -66,6 +67,7 @@ def test_chunks_larger_than_list():
 
 
 # --- _seed_users ---
+
 
 def test_seed_users_row_count(mock_engine):
     engine, captured = mock_engine
@@ -109,6 +111,7 @@ def test_seed_users_timestamps_are_datetimes(mock_engine):
 
 # --- _seed_products ---
 
+
 def test_seed_products_row_count(mock_engine):
     engine, captured = mock_engine
     _seed_products(engine, fake, 200)
@@ -134,6 +137,7 @@ def test_seed_products_return_rate_bounded(mock_engine):
 
 
 # --- _seed_orders ---
+
 
 def test_seed_orders_injects_duplicates(mock_engine):
     engine, captured = mock_engine
@@ -162,6 +166,7 @@ def test_seed_orders_positive_amount(mock_engine):
 
 
 # --- _seed_events ---
+
 
 def test_seed_events_row_count(mock_engine):
     engine, captured = mock_engine

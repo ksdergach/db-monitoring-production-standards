@@ -20,6 +20,7 @@ Three guard-rails on top of the production-params work in #234:
 Plus a per-metadata-call timeout so one stuck ``collect_table_schema``
 doesn't sink the whole tick.
 """
+
 from __future__ import annotations
 
 import json
@@ -64,10 +65,14 @@ def _make_iceberg_conn(storage, *, namespace=None, allowlist=None, metadata_only
     """Insert a minimal Iceberg connection row and return its id."""
     user_id = uuid.uuid4().hex
     storage.create_user(
-        user_id=user_id, email=f"u{user_id[:6]}@x.io", password_hash="x",
+        user_id=user_id,
+        email=f"u{user_id[:6]}@x.io",
+        password_hash="x",
     )
     project = storage.create_project(
-        project_id=uuid.uuid4().hex, user_id=user_id, name="P",
+        project_id=uuid.uuid4().hex,
+        user_id=user_id,
+        name="P",
         slug=f"p-{user_id[:6]}",
     )
 
@@ -85,16 +90,20 @@ def _make_iceberg_conn(storage, *, namespace=None, allowlist=None, metadata_only
     )
     if allowlist is not None or metadata_only:
         from sqlalchemy import text
+
         with storage.get_engine().begin() as c:
-            c.execute(text(
-                "UPDATE connections SET "
-                "iceberg_namespace_allowlist = :al, metadata_only_mode = :mm "
-                "WHERE id = :id"
-            ), {
-                "al": json.dumps(allowlist) if allowlist else None,
-                "mm": 1 if metadata_only else 0,
-                "id": conn_id,
-            })
+            c.execute(
+                text(
+                    "UPDATE connections SET "
+                    "iceberg_namespace_allowlist = :al, metadata_only_mode = :mm "
+                    "WHERE id = :id"
+                ),
+                {
+                    "al": json.dumps(allowlist) if allowlist else None,
+                    "mm": 1 if metadata_only else 0,
+                    "id": conn_id,
+                },
+            )
     return project["id"], conn_id
 
 
@@ -105,11 +114,13 @@ def test_default_iterates_only_effective_namespace():
     """No allowlist → just [effective_namespace], no list_namespaces call."""
     assert _iceberg_namespaces_to_scan({}, "lakehouse") == ["lakehouse"]
     assert _iceberg_namespaces_to_scan(
-        {"iceberg_namespace_allowlist": None}, "lakehouse",
+        {"iceberg_namespace_allowlist": None},
+        "lakehouse",
     ) == ["lakehouse"]
     # Empty JSON list also collapses to single-namespace path.
     assert _iceberg_namespaces_to_scan(
-        {"iceberg_namespace_allowlist": "[]"}, "lakehouse",
+        {"iceberg_namespace_allowlist": "[]"},
+        "lakehouse",
     ) == ["lakehouse"]
 
 
@@ -166,8 +177,11 @@ def _patched_adapter(monkeypatch, *, list_tables, table_stats=None):
         adapter.table_stats.side_effect = table_stats
     else:
         adapter.table_stats.return_value = {
-            "table_name": "t", "schema": "n",
-            "row_count": 0, "size_bytes": 0, "last_analyze": None,
+            "table_name": "t",
+            "schema": "n",
+            "row_count": 0,
+            "size_bytes": 0,
+            "last_analyze": None,
         }
     monkeypatch.setattr(
         "collectors.per_project.make_adapter_for_url",
@@ -179,9 +193,12 @@ def _patched_adapter(monkeypatch, *, list_tables, table_stats=None):
 def test_collector_walks_only_effective_namespace_by_default(storage, monkeypatch):
     """No allowlist → adapter.list_tables called once with effective_ns."""
     project_id, conn_id = _make_iceberg_conn(storage, namespace="lakehouse")
-    adapter = _patched_adapter(monkeypatch, list_tables=lambda ns: [
-        {"table_name": "orders", "schema": ns},
-    ])
+    adapter = _patched_adapter(
+        monkeypatch,
+        list_tables=lambda ns: [
+            {"table_name": "orders", "schema": ns},
+        ],
+    )
     # Stub schema collection — we only assert namespace traversal.
     monkeypatch.setattr(
         "collectors.schema_collector.collect_table_schema",
@@ -208,7 +225,9 @@ def test_collector_walks_only_effective_namespace_by_default(storage, monkeypatc
 
 def test_collector_walks_allowlisted_namespaces(storage, monkeypatch):
     project_id, conn_id = _make_iceberg_conn(
-        storage, namespace="default", allowlist=["prod", "staging"],
+        storage,
+        namespace="default",
+        allowlist=["prod", "staging"],
     )
     calls: list[str] = []
 
@@ -233,12 +252,17 @@ def test_metadata_only_skips_metrics_collect(storage, monkeypatch):
     """metadata_only_mode=True → MetricsCollector.collect NOT called, but
     collect_table_schema IS called."""
     project_id, conn_id = _make_iceberg_conn(
-        storage, namespace="lakehouse", metadata_only=True,
+        storage,
+        namespace="lakehouse",
+        metadata_only=True,
     )
-    _patched_adapter(monkeypatch, list_tables=lambda ns: [
-        {"table_name": "orders", "schema": ns},
-        {"table_name": "users", "schema": ns},
-    ])
+    _patched_adapter(
+        monkeypatch,
+        list_tables=lambda ns: [
+            {"table_name": "orders", "schema": ns},
+            {"table_name": "users", "schema": ns},
+        ],
+    )
     schema_calls: list[str] = []
     monkeypatch.setattr(
         "collectors.schema_collector.collect_table_schema",
@@ -262,18 +286,22 @@ def test_metadata_only_skips_metrics_collect(storage, monkeypatch):
 def test_metadata_only_respects_max_tables(storage, monkeypatch):
     """max_tables_per_tick=1 + metadata_only → only 1 schema call."""
     project_id, conn_id = _make_iceberg_conn(
-        storage, namespace="lakehouse", metadata_only=True,
+        storage,
+        namespace="lakehouse",
+        metadata_only=True,
     )
     # Lower max_tables_per_tick after creation.
     from sqlalchemy import text as _text
-    with storage.get_engine().begin() as c:
-        c.execute(_text(
-            "UPDATE connections SET max_tables_per_tick = 1 WHERE id = :id"
-        ), {"id": conn_id})
 
-    _patched_adapter(monkeypatch, list_tables=lambda ns: [
-        {"table_name": f"t{i}", "schema": ns} for i in range(5)
-    ])
+    with storage.get_engine().begin() as c:
+        c.execute(
+            _text("UPDATE connections SET max_tables_per_tick = 1 WHERE id = :id"), {"id": conn_id}
+        )
+
+    _patched_adapter(
+        monkeypatch,
+        list_tables=lambda ns: [{"table_name": f"t{i}", "schema": ns} for i in range(5)],
+    )
     schema_calls: list[str] = []
     monkeypatch.setattr(
         "collectors.schema_collector.collect_table_schema",
@@ -292,16 +320,21 @@ def test_table_allowlist_filters_iceberg_tables(storage, monkeypatch):
     for non-allowlisted tables."""
     project_id, conn_id = _make_iceberg_conn(storage, namespace="lakehouse")
     from sqlalchemy import text as _text
-    with storage.get_engine().begin() as c:
-        c.execute(_text(
-            "UPDATE connections SET table_allowlist = :al WHERE id = :id"
-        ), {"al": json.dumps(["orders"]), "id": conn_id})
 
-    _patched_adapter(monkeypatch, list_tables=lambda ns: [
-        {"table_name": "orders", "schema": ns},
-        {"table_name": "events", "schema": ns},
-        {"table_name": "logs", "schema": ns},
-    ])
+    with storage.get_engine().begin() as c:
+        c.execute(
+            _text("UPDATE connections SET table_allowlist = :al WHERE id = :id"),
+            {"al": json.dumps(["orders"]), "id": conn_id},
+        )
+
+    _patched_adapter(
+        monkeypatch,
+        list_tables=lambda ns: [
+            {"table_name": "orders", "schema": ns},
+            {"table_name": "events", "schema": ns},
+            {"table_name": "logs", "schema": ns},
+        ],
+    )
     schema_calls: list[str] = []
     monkeypatch.setattr(
         "collectors.schema_collector.collect_table_schema",
@@ -322,11 +355,14 @@ def test_table_allowlist_filters_iceberg_tables(storage, monkeypatch):
 def test_timeout_does_not_kill_tick(storage, monkeypatch, caplog):
     """One stuck collect_table_schema must not stop the rest."""
     project_id, conn_id = _make_iceberg_conn(storage, namespace="lakehouse")
-    _patched_adapter(monkeypatch, list_tables=lambda ns: [
-        {"table_name": "fast", "schema": ns},
-        {"table_name": "stuck", "schema": ns},
-        {"table_name": "fast2", "schema": ns},
-    ])
+    _patched_adapter(
+        monkeypatch,
+        list_tables=lambda ns: [
+            {"table_name": "fast", "schema": ns},
+            {"table_name": "stuck", "schema": ns},
+            {"table_name": "fast2", "schema": ns},
+        ],
+    )
     collected: list[str] = []
 
     def _schema(name, **kw):
@@ -335,7 +371,8 @@ def test_timeout_does_not_kill_tick(storage, monkeypatch, caplog):
         collected.append(name)
 
     monkeypatch.setattr(
-        "collectors.schema_collector.collect_table_schema", _schema,
+        "collectors.schema_collector.collect_table_schema",
+        _schema,
     )
     monkeypatch.setattr(
         "collectors.metrics_collector.MetricsCollector.collect",
@@ -343,7 +380,8 @@ def test_timeout_does_not_kill_tick(storage, monkeypatch, caplog):
     )
     # Shrink the timeout for the test so it actually fires.
     monkeypatch.setattr(
-        "collectors.per_project._METADATA_CALL_TIMEOUT_S", 0.3,
+        "collectors.per_project._METADATA_CALL_TIMEOUT_S",
+        0.3,
     )
     monkeypatch.setattr(
         "collectors.per_project.using_engine",
@@ -361,10 +399,7 @@ def test_timeout_does_not_kill_tick(storage, monkeypatch, caplog):
     # "skip <name>: timeout" wording). Either phrasing is acceptable — the
     # invariant is that *stuck* appears in a warning and the tick still
     # finishes the rest.
-    assert any(
-        "stuck" in rec.message and "time" in rec.message.lower()
-        for rec in caplog.records
-    )
+    assert any("stuck" in rec.message and "time" in rec.message.lower() for rec in caplog.records)
 
 
 # --- Helpers ---------------------------------------------------------------

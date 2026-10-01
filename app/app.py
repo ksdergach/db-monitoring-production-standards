@@ -24,9 +24,7 @@ from .security import init_logging_filter
 from .sentry import init_sentry
 from .settings import bp as settings_bp
 
-_ISO_TS_RE = re.compile(
-    r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})"
-)
+_ISO_TS_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})")
 
 
 def _fmt_iso_in_text(text: str) -> str:
@@ -156,7 +154,9 @@ def _warn_unsafe_sqlite_metrics_store() -> None:
         "scheduler write load and breaks /dashboard/notifications. "
         "Switch to Postgres/Timescale — see .env.example MONITOR_DB_URL "
         "block + docs README 'Metrics store backend' section.",
-        url, settings.FLASK_ENV, is_docker,
+        url,
+        settings.FLASK_ENV,
+        is_docker,
     )
 
 
@@ -176,23 +176,26 @@ def _auto_promote_admin() -> None:
         return
     try:
         from app.metrics_storage import get_user_by_email, set_user_admin
+
         user = get_user_by_email(email)
         if user is None:
             logging.getLogger("app.startup").info(
-                "ADMIN_EMAIL=%s set but no such user yet — promote will apply "
-                "after they register.", email,
+                "ADMIN_EMAIL=%s set but no such user yet — promote will apply after they register.",
+                email,
             )
             return
         if user.get("is_admin"):
             return  # уже admin, не пишем в БД повторно
         set_user_admin(user["id"], True)
         logging.getLogger("app.startup").info(
-            "Promoted %s to system admin (ADMIN_EMAIL match)", email,
+            "Promoted %s to system admin (ADMIN_EMAIL match)",
+            email,
         )
     except Exception as exc:  # pragma: no cover - defensive
         # storage не должен ломать boot — admin promote можно сделать руками.
         logging.getLogger("app.startup").warning(
-            "Auto-promote of ADMIN_EMAIL failed: %s", exc,
+            "Auto-promote of ADMIN_EMAIL failed: %s",
+            exc,
         )
 
 
@@ -200,14 +203,17 @@ def _cleanup_stale_collector_runs() -> None:
     """Mark collector runs left in running state by a crashed process."""
     try:
         from app.metrics_storage import cleanup_stale_collector_runs
+
         updated = cleanup_stale_collector_runs()
         if updated:
             logging.getLogger("app.startup").warning(
-                "Marked %d stale collector run(s) as failed", updated,
+                "Marked %d stale collector run(s) as failed",
+                updated,
             )
     except Exception as exc:  # pragma: no cover - defensive boot guard
         logging.getLogger("app.startup").warning(
-            "Collector run stale cleanup failed: %s", exc,
+            "Collector run stale cleanup failed: %s",
+            exc,
         )
 
 
@@ -299,9 +305,11 @@ def create_app(config: dict | None = None):
     # across `create_app()` calls — Flask refuses a second `before_request`
     # once they've been registered once.
     _PROTECTED_PREFIXES = ("/dashboard", "/admin", "/projects")
+
     @app.before_request
     def _require_login_for_html():
         from flask import request
+
         if request.path.startswith(_PROTECTED_PREFIXES):
             return _abort_if_unauthenticated()
         return None
@@ -320,6 +328,7 @@ def create_app(config: dict | None = None):
         import uuid
 
         from flask import g, request
+
         upstream = request.headers.get("X-Request-Id", "").strip()
         # Cap incoming header length so a hostile peer can't make logs
         # disgusting; UUID hex is 32 chars, give a 4× buffer for upstream
@@ -380,6 +389,7 @@ def create_app(config: dict | None = None):
         on Kubernetes liveness probes).
         """
         from flask import request as flask_request
+
         strict = flask_request.args.get("strict", "").lower() in ("1", "true", "yes")
         payload, status_code = build_health_payload(
             strict=strict,
@@ -393,6 +403,7 @@ def create_app(config: dict | None = None):
         not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true"
     ):
         from collectors.scheduler import start_scheduler
+
         start_scheduler(app)
 
     return app

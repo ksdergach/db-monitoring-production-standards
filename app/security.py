@@ -45,17 +45,13 @@ _DSN_IN_TEXT = re.compile(
 # Why scrub these? Any caller can log "token=%s" with the plaintext bot
 # token at debug time; leaking the token lets anyone impersonate the bot
 # and exfiltrate notifications to attacker-controlled chats.
-_TELEGRAM_TOKEN_IN_TEXT = re.compile(
-    r"\b(?P<bot_id>\d{8,12}):(?P<hash>[A-Za-z0-9_\-]{35})\b"
-)
+_TELEGRAM_TOKEN_IN_TEXT = re.compile(r"\b(?P<bot_id>\d{8,12}):(?P<hash>[A-Za-z0-9_\-]{35})\b")
 
 # AWS Access Key ID (#231). Format: AKIA[0-9A-Z]{16} (regular keys),
 # ASIA[0-9A-Z]{16} (temporary STS keys). Spec is stable — Amazon documents
 # the prefixes как identity. Match as a whole token so substrings of unrelated
 # uppercase hex blobs don't trigger.
-_AWS_ACCESS_KEY_IN_TEXT = re.compile(
-    r"\b(?P<aws_key>(?:AKIA|ASIA)[0-9A-Z]{16})\b"
-)
+_AWS_ACCESS_KEY_IN_TEXT = re.compile(r"\b(?P<aws_key>(?:AKIA|ASIA)[0-9A-Z]{16})\b")
 
 # AWS Secret Access Key + S3/Iceberg/etc secret in key=value form. Не
 # имеет фиксированного формата (любая base64-ish строка 30-128 chars),

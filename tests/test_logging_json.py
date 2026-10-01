@@ -18,8 +18,9 @@ import pytest
 from app.logging_setup import JsonFormatter, configure_logging
 
 
-def _capture_records_via(formatter: logging.Formatter, *,
-                         logger_name: str, msg: str, **extra) -> str:
+def _capture_records_via(
+    formatter: logging.Formatter, *, logger_name: str, msg: str, **extra
+) -> str:
     """Render one log record through ``formatter`` and return the line.
 
     A dedicated logger + handler stack keeps the test from depending on
@@ -41,6 +42,7 @@ def _capture_records_via(formatter: logging.Formatter, *,
 
 # ── JsonFormatter shape ────────────────────────────────────────────────────
 
+
 def test_json_formatter_required_fields():
     """Every line includes timestamp, level, logger, message, request_id."""
     line = _capture_records_via(
@@ -60,7 +62,9 @@ def test_json_formatter_required_fields():
 
 def test_json_formatter_includes_iso_utc_timestamp():
     line = _capture_records_via(
-        JsonFormatter(), logger_name="ts", msg="x",
+        JsonFormatter(),
+        logger_name="ts",
+        msg="x",
     )
     record = json.loads(line)
     # 2026-05-30T12:34:56.789+00:00 — millisecond precision, UTC offset.
@@ -73,8 +77,11 @@ def test_json_formatter_includes_iso_utc_timestamp():
 def test_json_formatter_includes_extra_fields():
     """logger.info(..., extra={'k': v}) → JSON payload has 'k'."""
     line = _capture_records_via(
-        JsonFormatter(), logger_name="ex", msg="x",
-        project_id="proj-A", connection_id="conn-X",
+        JsonFormatter(),
+        logger_name="ex",
+        msg="x",
+        project_id="proj-A",
+        connection_id="conn-X",
     )
     record = json.loads(line)
     assert record["project_id"] == "proj-A"
@@ -105,12 +112,15 @@ def test_json_formatter_includes_exc_info():
 def test_json_formatter_handles_unserialisable_extra():
     """An object that isn't JSON-serialisable must NOT crash the formatter.
     We fall back to str(value)."""
+
     class NotSerializable:
         def __repr__(self):
             return "<NotSerializable instance>"
 
     line = _capture_records_via(
-        JsonFormatter(), logger_name="bad", msg="x",
+        JsonFormatter(),
+        logger_name="bad",
+        msg="x",
         widget=NotSerializable(),
     )
     record = json.loads(line)
@@ -118,6 +128,7 @@ def test_json_formatter_handles_unserialisable_extra():
 
 
 # ── configure_logging integration ──────────────────────────────────────────
+
 
 def test_configure_logging_idempotent_handler_count():
     """Repeated configure_logging() must not stack handlers on root —
@@ -144,6 +155,7 @@ def test_configure_logging_json_mode_attached(monkeypatch):
 
 # ── Flask request_id propagation ───────────────────────────────────────────
 
+
 @pytest.fixture
 def app_(tmp_path, monkeypatch):
     import app.metrics_storage as storage
@@ -157,6 +169,7 @@ def app_(tmp_path, monkeypatch):
     monkeypatch.setattr(cfg, "LOG_FORMAT", "json")
 
     import app.db
+
     monkeypatch.setattr(app.db, "list_tables", lambda schema=None: [])
 
     return create_app({"TESTING": True})
@@ -191,16 +204,22 @@ def test_request_id_appears_in_json_logs_within_request(app_, caplog):
     # record manually inside a synthetic app context to confirm the
     # JsonFormatter pulls g.request_id.
     formatter = JsonFormatter()
-    with app_.test_request_context("/healthz",
-                                    headers={"X-Request-Id": rid}):
+    with app_.test_request_context("/healthz", headers={"X-Request-Id": rid}):
         # Simulate the before_request hook (test_request_context doesn't
         # auto-fire app-level hooks).
         from flask import g
+
         g.request_id = rid
-        rec = logging.makeLogRecord({
-            "name": "ctx", "msg": "hi", "levelname": "INFO",
-            "levelno": 20, "args": (), "created": 1700000000.123,
-        })
+        rec = logging.makeLogRecord(
+            {
+                "name": "ctx",
+                "msg": "hi",
+                "levelname": "INFO",
+                "levelno": 20,
+                "args": (),
+                "created": 1700000000.123,
+            }
+        )
         rec.message = "hi"
         line = formatter.format(rec)
     payload = json.loads(line)
@@ -208,15 +227,22 @@ def test_request_id_appears_in_json_logs_within_request(app_, caplog):
     # Suppress unused warning from caplog parameter.
     assert caplog is not None
     # Sanity: outside the context, request_id is None.
-    rec_out = logging.makeLogRecord({
-        "name": "ctx", "msg": "hi", "levelname": "INFO",
-        "levelno": 20, "args": (), "created": 1700000000.123,
-    })
+    rec_out = logging.makeLogRecord(
+        {
+            "name": "ctx",
+            "msg": "hi",
+            "levelname": "INFO",
+            "levelno": 20,
+            "args": (),
+            "created": 1700000000.123,
+        }
+    )
     rec_out.message = "hi"
     assert json.loads(formatter.format(rec_out))["request_id"] is None
 
 
 # ── DSN scrubbing regression (from #56) ────────────────────────────────────
+
 
 def test_dsn_scrub_still_works_under_json_formatter():
     """Logging a DSN-containing message must NOT include the password
@@ -234,8 +260,7 @@ def test_dsn_scrub_still_works_under_json_formatter():
     logger.propagate = False
     logger.setLevel(logging.DEBUG)
     try:
-        logger.warning("connect failed: %s",
-                       "postgresql://u:topsecret@h:5432/d")
+        logger.warning("connect failed: %s", "postgresql://u:topsecret@h:5432/d")
     finally:
         logger.handlers = []
 

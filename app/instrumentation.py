@@ -85,12 +85,15 @@ def _record_response(response):
     method = request.method
     status = str(response.status_code)
     http_requests_total.labels(
-        method=method, endpoint=endpoint, status=status,
+        method=method,
+        endpoint=endpoint,
+        status=status,
     ).inc()
     start = getattr(g, "_prom_start_time", None)
     if start is not None:
         http_request_duration_seconds.labels(
-            method=method, endpoint=endpoint,
+            method=method,
+            endpoint=endpoint,
         ).observe(time.perf_counter() - start)
     return response
 
@@ -102,6 +105,7 @@ def install_http_instrumentation(app) -> None:
 
 
 # ── /metrics endpoint ──────────────────────────────────────────────────────
+
 
 def metrics_response() -> Response:
     """Render the current registry in Prometheus text exposition format.

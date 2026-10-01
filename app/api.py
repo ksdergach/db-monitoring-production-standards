@@ -31,6 +31,7 @@ def _current_project_id() -> str:
     project = getattr(g, "current_project", None)
     return project["id"] if project else "legacy"
 
+
 api = Blueprint("api", __name__, url_prefix="/api")
 
 _VALID_METRICS = {"row_count", "null_rate", "null_count", "size_bytes", "last_modified"}
@@ -46,7 +47,12 @@ _RANGES = {
 }
 _HORIZONS = {"1d": 1, "3d": 3, "7d": 7, "14d": 14, "30d": 30}
 _NOTIFICATION_EVENT_TYPES = {
-    "anomaly", "schema_drift", "changepoint", "forecast", "root_cause", "test",
+    "anomaly",
+    "schema_drift",
+    "changepoint",
+    "forecast",
+    "root_cause",
+    "test",
 }
 _NOTIFICATION_STATUSES = {"sent", "failed"}
 _MAX_NOTIFICATIONS_LIMIT = 200
@@ -75,12 +81,14 @@ def tables():
         nr = get_latest_metric(name, "null_rate", project_id)
         candidates = [x["ts"] for x in (rc, nr) if x]
         last_check = max(candidates) if candidates else None
-        result.append({
-            "table_name": name,
-            "row_count": rc["value"] if rc else None,
-            "null_rate": nr["value"] if nr else None,
-            "last_check": last_check,
-        })
+        result.append(
+            {
+                "table_name": name,
+                "row_count": rc["value"] if rc else None,
+                "null_rate": nr["value"] if nr else None,
+                "last_check": last_check,
+            }
+        )
     return jsonify(result)
 
 
@@ -131,7 +139,9 @@ def forecast_endpoint(table_name: str):
         return jsonify({"error": f"horizon must be one of {sorted(_HORIZONS)}"}), 400
 
     try:
-        points = run_forecast(table_name, metric, horizon_days=_HORIZONS[horizon], project_id=_current_project_id())
+        points = run_forecast(
+            table_name, metric, horizon_days=_HORIZONS[horizon], project_id=_current_project_id()
+        )
     except InsufficientDataError as e:
         return jsonify({"error": "insufficient_data", "message": str(e)}), 422
     return jsonify(points)
@@ -278,7 +288,9 @@ def notifications():
     range_str = request.args.get("range")
 
     if event_type and event_type not in _NOTIFICATION_EVENT_TYPES:
-        return jsonify({"error": f"event_type must be one of {sorted(_NOTIFICATION_EVENT_TYPES)}"}), 400
+        return jsonify(
+            {"error": f"event_type must be one of {sorted(_NOTIFICATION_EVENT_TYPES)}"}
+        ), 400
     if status and status not in _NOTIFICATION_STATUSES:
         return jsonify({"error": f"status must be one of {sorted(_NOTIFICATION_STATUSES)}"}), 400
     if range_str and range_str not in _RANGES:
@@ -297,6 +309,7 @@ def notifications():
     since = None
     if range_str:
         from datetime import datetime
+
         since = datetime.now(UTC) - _RANGES[range_str]
 
     project = getattr(g, "current_project", None)
@@ -311,8 +324,7 @@ def notifications():
         "status": status,
         "since": since,
     }
-    items = get_notifications(limit=limit, offset=offset,
-                              project_id=notif_project_id, **filters)
+    items = get_notifications(limit=limit, offset=offset, project_id=notif_project_id, **filters)
     total = count_notifications(project_id=notif_project_id, **filters)
     return jsonify({"items": items, "total": total, "limit": limit, "offset": offset})
 
@@ -327,4 +339,6 @@ def schema_changes(table_name: str):
     range_str = request.args.get("range", "30d")
     if range_str not in _RANGES:
         return jsonify({"error": f"range must be one of {sorted(_RANGES)}"}), 400
-    return jsonify(get_schema_events(table_name, project_id=_current_project_id(), window=_RANGES[range_str]))
+    return jsonify(
+        get_schema_events(table_name, project_id=_current_project_id(), window=_RANGES[range_str])
+    )

@@ -66,19 +66,22 @@ def _parse_table_list(raw: str | None) -> list[str]:
         parsed = json.loads(raw)
     except (ValueError, TypeError):
         logger.warning(
-            "invalid JSON in connection safety list, treating as empty: %r", raw,
+            "invalid JSON in connection safety list, treating as empty: %r",
+            raw,
         )
         return []
     if not isinstance(parsed, list):
         logger.warning(
-            "connection safety list must be a JSON array, got %s", type(parsed).__name__,
+            "connection safety list must be a JSON array, got %s",
+            type(parsed).__name__,
         )
         return []
     return [str(x).strip() for x in parsed if isinstance(x, str)]
 
 
 def _apply_table_filters(
-    tables: list[dict], conn_row: dict,
+    tables: list[dict],
+    conn_row: dict,
 ) -> tuple[list[dict], list[tuple[str, str]]]:
     """Apply allowlist → denylist → max_tables_per_tick.
 
@@ -137,11 +140,12 @@ def _build_engine(dsn: str, statement_timeout_ms: int | None):
     from sqlalchemy.pool import NullPool
 
     connect_args: dict = {"connect_timeout": 5}
-    if dsn.lower().startswith(("postgres://", "postgresql://", "postgresql+")) \
-            and statement_timeout_ms and statement_timeout_ms > 0:
-        connect_args["options"] = (
-            f"-c statement_timeout={int(statement_timeout_ms)}"
-        )
+    if (
+        dsn.lower().startswith(("postgres://", "postgresql://", "postgresql+"))
+        and statement_timeout_ms
+        and statement_timeout_ms > 0
+    ):
+        connect_args["options"] = f"-c statement_timeout={int(statement_timeout_ms)}"
     return create_engine(dsn, poolclass=NullPool, connect_args=connect_args)
 
 
@@ -154,7 +158,8 @@ def _is_iceberg_dsn(dsn: str) -> bool:
 
 
 def _iceberg_namespaces_to_scan(
-    conn_row: dict, effective_namespace: str | None,
+    conn_row: dict,
+    effective_namespace: str | None,
 ) -> list[str]:
     """#235: which Iceberg namespaces this tick should iterate.
 
@@ -208,6 +213,7 @@ def _run_with_timeout(fn, *args, timeout: float | None = None, **kwargs):
                 f"metadata call exceeded {timeout}s",
             ) from exc
 
+
 # `prefix` so admin tooling and grep can spot a per-connection job at sight
 # without parsing the id structure.
 JOB_PREFIX = "collect:"
@@ -224,7 +230,7 @@ def parse_job_id(job_id: str) -> tuple[str, str] | None:
     """
     if not job_id.startswith(JOB_PREFIX):
         return None
-    parts = job_id[len(JOB_PREFIX):].split(":", 1)
+    parts = job_id[len(JOB_PREFIX) :].split(":", 1)
     if len(parts) != 2:
         return None
     return parts[0], parts[1]
@@ -237,6 +243,7 @@ def _inc_collector_error_counter() -> None:
     """Best-effort Prometheus error counter bump."""
     try:
         from app.instrumentation import collector_runs_total
+
         collector_runs_total.labels(result="error").inc()
     except ImportError:
         pass
@@ -266,8 +273,7 @@ def collect_for_connection(project_id: str, connection_id: str) -> None:
 
     conn_row = get_connection(project_id, connection_id)
     if conn_row is None:
-        logger.info("[project=%s][conn=%s] skipped — inactive/deleted",
-                    project_id, connection_id)
+        logger.info("[project=%s][conn=%s] skipped — inactive/deleted", project_id, connection_id)
         return
 
     save_collector_run(
@@ -280,8 +286,7 @@ def collect_for_connection(project_id: str, connection_id: str) -> None:
     run_created = True
 
     if not conn_row["is_active"]:
-        logger.info("[project=%s][conn=%s] skipped — inactive/deleted",
-                    project_id, connection_id)
+        logger.info("[project=%s][conn=%s] skipped — inactive/deleted", project_id, connection_id)
         update_collector_run(
             run_id,
             status="skipped",
@@ -297,8 +302,7 @@ def collect_for_connection(project_id: str, connection_id: str) -> None:
         run_error = scrub_value(
             "DSN ciphertext invalid — Fernet key rotated? Re-save the connection."
         )
-        logger.warning("[project=%s][conn=%s] %s",
-                       project_id, connection_id, run_error)
+        logger.warning("[project=%s][conn=%s] %s", project_id, connection_id, run_error)
         update_collector_run(
             run_id,
             status="failed",
@@ -323,7 +327,9 @@ def collect_for_connection(project_id: str, connection_id: str) -> None:
             )
             logger.warning(
                 "[project=%s][conn=%s] %s",
-                project_id, connection_id, run_error,
+                project_id,
+                connection_id,
+                run_error,
             )
             update_collector_run(
                 run_id,
@@ -350,8 +356,7 @@ def collect_for_connection(project_id: str, connection_id: str) -> None:
         )
     except Exception as exc:
         run_error = scrub_value(exc)
-        logger.warning("[project=%s][conn=%s] %s",
-                       project_id, connection_id, run_error)
+        logger.warning("[project=%s][conn=%s] %s", project_id, connection_id, run_error)
         update_collector_run(
             run_id,
             status="failed",
@@ -381,7 +386,8 @@ def collect_for_connection(project_id: str, connection_id: str) -> None:
             logger.warning(
                 "[project=%s][conn=%s] no namespace to scan — set "
                 "iceberg_namespace or iceberg_namespace_allowlist",
-                project_id, connection_id,
+                project_id,
+                connection_id,
             )
     else:
         namespaces_to_scan = [effective_ns]
@@ -404,7 +410,9 @@ def collect_for_connection(project_id: str, connection_id: str) -> None:
                 logger.warning(
                     "[project=%s][conn=%s] collection_mode=%r not supported "
                     "for non-Postgres dialect, falling back to 'full'",
-                    project_id, connection_id, requested_mode,
+                    project_id,
+                    connection_id,
+                    requested_mode,
                 )
                 effective_mode = "full"
 
@@ -417,7 +425,9 @@ def collect_for_connection(project_id: str, connection_id: str) -> None:
                     logger.warning(
                         "[project=%s][conn=%s] list_tables timed out for "
                         "namespace=%s — skipping namespace this tick",
-                        project_id, connection_id, ns,
+                        project_id,
+                        connection_id,
+                        ns,
                     )
                     continue
 
@@ -428,16 +438,23 @@ def collect_for_connection(project_id: str, connection_id: str) -> None:
                 for name, reason in skipped:
                     logger.info(
                         "[project=%s][conn=%s] skip %s: %s",
-                        project_id, connection_id, name, reason,
+                        project_id,
+                        connection_id,
+                        name,
+                        reason,
                     )
                     tables_skipped += 1
                     save_run_table(
-                        run_id, name, "skipped",
-                        skip_reason=reason, duration_ms=0,
+                        run_id,
+                        name,
+                        "skipped",
+                        skip_reason=reason,
+                        duration_ms=0,
                     )
 
                 collector = MetricsCollector(
-                    schema=ns, collection_mode=effective_mode,
+                    schema=ns,
+                    collection_mode=effective_mode,
                 )
                 for table in tables:
                     table_name = table["table_name"]
@@ -467,16 +484,19 @@ def collect_for_connection(project_id: str, connection_id: str) -> None:
                             logger.warning(
                                 "[project=%s][conn=%s] skip %s: timeout "
                                 "(metadata_only collect_table_schema)",
-                                project_id, connection_id, table_name,
+                                project_id,
+                                connection_id,
+                                table_name,
                             )
                         except Exception as schema_exc:
                             degraded = True
                             table_status = "failed"
                             table_error = scrub_value(schema_exc)
                             logger.warning(
-                                "[project=%s][conn=%s] schema collection "
-                                "failed for %s: %s",
-                                project_id, connection_id, table_name,
+                                "[project=%s][conn=%s] schema collection failed for %s: %s",
+                                project_id,
+                                connection_id,
+                                table_name,
                                 table_error,
                             )
                         if table_status == "skipped":
@@ -484,7 +504,9 @@ def collect_for_connection(project_id: str, connection_id: str) -> None:
                         else:
                             tables_checked += 1
                         save_run_table(
-                            run_id, table_name, table_status,
+                            run_id,
+                            table_name,
+                            table_status,
                             duration_ms=int(
                                 (time.monotonic() - table_started) * 1000,
                             ),
@@ -502,16 +524,19 @@ def collect_for_connection(project_id: str, connection_id: str) -> None:
                         threshold_bytes = float(skip_larger_than_gb) * 1e9
                         if stats and stats["size_bytes"] > threshold_bytes:
                             logger.info(
-                                "[project=%s][conn=%s] skip %s: too_large "
-                                "(%.2f GB > %.2f GB)",
-                                project_id, connection_id, table_name,
+                                "[project=%s][conn=%s] skip %s: too_large (%.2f GB > %.2f GB)",
+                                project_id,
+                                connection_id,
+                                table_name,
                                 stats["size_bytes"] / 1e9,
                                 float(skip_larger_than_gb),
                             )
                             table_status = "skipped"
                             tables_skipped += 1
                             save_run_table(
-                                run_id, table_name, "skipped",
+                                run_id,
+                                table_name,
+                                "skipped",
                                 skip_reason="too_large",
                                 duration_ms=int(
                                     (time.monotonic() - table_started) * 1000,
@@ -542,18 +567,20 @@ def collect_for_connection(project_id: str, connection_id: str) -> None:
                             table_status = "failed"
                             table_error = "collect_table_schema timeout"
                             logger.warning(
-                                "[project=%s][conn=%s] schema collection "
-                                "timed out for %s",
-                                project_id, connection_id, table_name,
+                                "[project=%s][conn=%s] schema collection timed out for %s",
+                                project_id,
+                                connection_id,
+                                table_name,
                             )
                         except Exception as schema_exc:
                             degraded = True
                             table_status = "failed"
                             table_error = scrub_value(schema_exc)
                             logger.warning(
-                                "[project=%s][conn=%s] schema collection "
-                                "failed for %s: %s",
-                                project_id, connection_id, table_name,
+                                "[project=%s][conn=%s] schema collection failed for %s: %s",
+                                project_id,
+                                connection_id,
+                                table_name,
                                 table_error,
                             )
                     except Exception as table_exc:
@@ -561,9 +588,11 @@ def collect_for_connection(project_id: str, connection_id: str) -> None:
                         table_status = "failed"
                         table_error = scrub_value(table_exc)
                         logger.warning(
-                            "[project=%s][conn=%s] table collection failed "
-                            "for %s: %s",
-                            project_id, connection_id, table_name, table_error,
+                            "[project=%s][conn=%s] table collection failed for %s: %s",
+                            project_id,
+                            connection_id,
+                            table_name,
+                            table_error,
                         )
                     finally:
                         if table_status != "skipped":
@@ -585,7 +614,10 @@ def collect_for_connection(project_id: str, connection_id: str) -> None:
         run_error = scrub_value(exc)
         logger.warning(
             "[project=%s][conn=%s] collection failed after %dms: %s",
-            project_id, connection_id, elapsed_ms, run_error,
+            project_id,
+            connection_id,
+            elapsed_ms,
+            run_error,
         )
         # #101: count the failed tick. Late import so a missing
         # prometheus-client install doesn't break collection itself.
@@ -617,11 +649,15 @@ def collect_for_connection(project_id: str, connection_id: str) -> None:
 
     logger.info(
         "[project=%s][conn=%s] collected %d metrics across %d tables in %dms",
-        project_id, connection_id, rows_saved, tables_seen,
+        project_id,
+        connection_id,
+        rows_saved,
+        tables_seen,
         int((time.monotonic() - started) * 1000),
     )
     try:
         from app.instrumentation import collector_runs_total
+
         collector_runs_total.labels(result="ok").inc()
     except ImportError:
         pass
@@ -649,26 +685,35 @@ def _refresh_drift_cache(project_id: str, table_names: list[str]) -> None:
         return
     try:
         from ml.drift import compute_and_store_drift_all
+
         counts = compute_and_store_drift_all(
-            project_id=project_id, tables=table_names,
+            project_id=project_id,
+            tables=table_names,
         )
         logger.debug(
-            "[project=%s] drift cache refreshed: %s", project_id, counts,
+            "[project=%s] drift cache refreshed: %s",
+            project_id,
+            counts,
         )
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning(
-            "[project=%s] drift refresh failed: %s", project_id, exc,
+            "[project=%s] drift refresh failed: %s",
+            project_id,
+            exc,
         )
 
 
 def _load_telegram_config(project_id: str) -> tuple[str, str, int] | None:
     """Thin wrapper around the shared public helper in app.notifications.telegram."""
     from app.notifications.telegram import load_project_telegram_config
+
     return load_project_telegram_config(project_id)
 
 
 def _passes_alert_quality_gate(
-    table: str, anomaly: dict, project_id: str,
+    table: str,
+    anomaly: dict,
+    project_id: str,
 ) -> bool:
     """Drop borderline anomalies before they reach Telegram (#171).
 
@@ -694,7 +739,9 @@ def _passes_alert_quality_gate(
         logger.debug(
             "[project=%s][table=%s] anomaly score %.4f below magnitude "
             "threshold (%.4f); dropping alert",
-            project_id, table, score,
+            project_id,
+            table,
+            score,
             settings.ANOMALY_NOTIFY_MIN_SCORE_MAGNITUDE,
         )
         return False
@@ -712,9 +759,12 @@ def _passes_alert_quality_gate(
         logger.debug(
             "[project=%s][table=%s] delta_ratio %.3f below threshold "
             "%.3f (baseline=%.1f, latest=%.1f); dropping alert",
-            project_id, table, delta_ratio,
+            project_id,
+            table,
+            delta_ratio,
             settings.ANOMALY_NOTIFY_MIN_DELTA_RATIO,
-            baseline, latest_value,
+            baseline,
+            latest_value,
         )
         return False
     return True
@@ -735,14 +785,17 @@ def _baseline_median_row_count(table: str, project_id: str) -> float | None:
 
     since = (datetime.now(UTC) - timedelta(days=7)).isoformat(timespec="seconds")
     with get_engine().connect() as conn:
-        rows = conn.execute(text("""
+        rows = conn.execute(
+            text("""
             SELECT value FROM metrics
             WHERE project_id = :pid
               AND table_name = :table
               AND metric_name = 'row_count'
               AND ts >= :since
             ORDER BY value
-        """), {"pid": project_id, "table": table, "since": since}).fetchall()
+        """),
+            {"pid": project_id, "table": table, "since": since},
+        ).fetchall()
     values = [float(r[0]) for r in rows]
     if len(values) < 3:
         return None
@@ -758,13 +811,16 @@ def _latest_row_count_at(table: str, project_id: str, ts: str) -> float | None:
     from app.metrics_storage import get_engine
 
     with get_engine().connect() as conn:
-        row = conn.execute(text("""
+        row = conn.execute(
+            text("""
             SELECT value FROM metrics
             WHERE project_id = :pid
               AND table_name = :table
               AND metric_name = 'row_count'
               AND ts = :ts
-        """), {"pid": project_id, "table": table, "ts": ts}).fetchone()
+        """),
+            {"pid": project_id, "table": table, "ts": ts},
+        ).fetchone()
     return float(row[0]) if row else None
 
 
@@ -817,14 +873,20 @@ def _maybe_notify_anomalies(project_id: str, table_names: list[str]) -> None:
                 continue
             try:
                 notify_anomaly(
-                    project_id, name, latest["ts"], latest["score"],
-                    bot_token=bot_token, chat_id=chat_id,
+                    project_id,
+                    name,
+                    latest["ts"],
+                    latest["score"],
+                    bot_token=bot_token,
+                    chat_id=chat_id,
                     throttle_minutes=throttle,
                 )
             except Exception as exc:
                 logger.warning(
                     "[project=%s][table=%s] anomaly notification failed: %s",
-                    project_id, name, exc,
+                    project_id,
+                    name,
+                    exc,
                 )
         except InsufficientDataError:
             # Not enough history to train — first few ticks. Quiet skip;
@@ -833,7 +895,9 @@ def _maybe_notify_anomalies(project_id: str, table_names: list[str]) -> None:
         except Exception as exc:
             logger.warning(
                 "[project=%s][table=%s] anomaly scoring skipped: %s",
-                project_id, name, exc,
+                project_id,
+                name,
+                exc,
             )
 
 
@@ -843,15 +907,18 @@ def _maybe_notify_anomalies(project_id: str, table_names: list[str]) -> None:
 _JOB_OPTS = {
     # APScheduler defaults that match the spec:
     "misfire_grace_time": 60,  # tolerate 60 s late firing on busy worker
-    "max_instances": 1,        # one tick at a time — long DB doesn't stack
-    "coalesce": True,          # if multiple firings missed, run once
+    "max_instances": 1,  # one tick at a time — long DB doesn't stack
+    "coalesce": True,  # if multiple firings missed, run once
     "replace_existing": True,  # idempotent add_job_for_connection on re-register
 }
 
 
 def add_job_for_connection(
-    scheduler: BaseScheduler, project_id: str, connection: dict,
-    *, run_immediately: bool = False,
+    scheduler: BaseScheduler,
+    project_id: str,
+    connection: dict,
+    *,
+    run_immediately: bool = False,
 ) -> None:
     """Idempotent: re-adding overwrites the existing job (same id).
 
@@ -865,8 +932,7 @@ def add_job_for_connection(
     where firing every active job at once would thunder the target DBs.
     """
     if scheduler is None or not scheduler.running:
-        logger.debug("scheduler not running, deferring job for conn=%s",
-                     connection["id"])
+        logger.debug("scheduler not running, deferring job for conn=%s", connection["id"])
         return
     extra: dict = {}
     if run_immediately:
@@ -883,7 +949,9 @@ def add_job_for_connection(
     )
     logger.info(
         "[project=%s][conn=%s] registered (every %d min%s)",
-        project_id, connection["id"], connection["interval_minutes"],
+        project_id,
+        connection["id"],
+        connection["interval_minutes"],
         ", first tick now" if run_immediately else "",
     )
 
@@ -916,16 +984,19 @@ def register_jobs_for_all_active_connections(scheduler: BaseScheduler) -> int:
     # connections directly. Each active row gets a job tagged with its
     # owning project_id.
     with get_engine().connect() as conn:
-        rows = conn.execute(text("""
+        rows = conn.execute(
+            text("""
             SELECT c.id, c.project_id, c.interval_minutes
             FROM connections AS c
             WHERE c.is_active = 1
-        """)).fetchall()
+        """)
+        ).fetchall()
 
     n = 0
     for cid, pid, interval in rows:
         add_job_for_connection(
-            scheduler, pid,
+            scheduler,
+            pid,
             {"id": cid, "interval_minutes": int(interval)},
         )
         n += 1
@@ -953,14 +1024,16 @@ def list_jobs_for_user(scheduler: BaseScheduler, user_id: str) -> list[dict]:
         project_id, conn_id = parsed
         if project_id not in owned_project_ids:
             continue
-        out.append({
-            "id": job.id,
-            "name": job.name,
-            "project_id": project_id,
-            "connection_id": conn_id,
-            "next_run_time": job.next_run_time.isoformat() if job.next_run_time else None,
-            "trigger": str(job.trigger),
-        })
+        out.append(
+            {
+                "id": job.id,
+                "name": job.name,
+                "project_id": project_id,
+                "connection_id": conn_id,
+                "next_run_time": job.next_run_time.isoformat() if job.next_run_time else None,
+                "trigger": str(job.trigger),
+            }
+        )
     return out
 
 

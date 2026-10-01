@@ -94,6 +94,7 @@ def _textarea_to_jsonlist(raw: str | None) -> str | None:
     if not parts:
         return None
     import json
+
     return json.dumps(parts)
 
 
@@ -102,6 +103,7 @@ def _jsonlist_to_textarea(raw: str | None) -> str:
     if not raw:
         return ""
     import json
+
     try:
         items = json.loads(raw)
     except (ValueError, TypeError):
@@ -140,8 +142,7 @@ class ConnectionForm(FlaskForm):
         "Интервал сбора (минуты)",
         validators=[
             DataRequired(),
-            NumberRange(min=5, max=1440,
-                        message="От 5 минут (минимум) до 1440 (раз в сутки)."),
+            NumberRange(min=5, max=1440, message="От 5 минут (минимум) до 1440 (раз в сутки)."),
         ],
         default=15,
     )
@@ -175,6 +176,7 @@ class ConnectionSafetyForm(FlaskForm):
     / «default»). Это интерпретируется в роуте, не в форме, чтобы валидация
     оставалась узкой.
     """
+
     # Основные поля (name/schema — owner+editor; dsn — только owner).
     conn_name = StringField(
         "Название подключения",
@@ -250,10 +252,12 @@ class ConnectionSafetyForm(FlaskForm):
     )
     # #234 Iceberg production params (edit-сторона).
     iceberg_namespace = StringField(
-        "Iceberg namespace", validators=[Optional(), Length(max=256)],
+        "Iceberg namespace",
+        validators=[Optional(), Length(max=256)],
     )
     iceberg_warehouse = StringField(
-        "Iceberg warehouse", validators=[Optional(), Length(max=256)],
+        "Iceberg warehouse",
+        validators=[Optional(), Length(max=256)],
     )
     iceberg_auth_token = PasswordField(
         "Iceberg auth token (пусто = оставить как есть)",
@@ -261,7 +265,8 @@ class ConnectionSafetyForm(FlaskForm):
         render_kw={"autocomplete": "off"},
     )
     iceberg_auth_token_clear = BooleanField(
-        "Очистить сохранённый токен", default=False,
+        "Очистить сохранённый токен",
+        default=False,
     )
 
     submit = SubmitField("Сохранить настройки")
@@ -362,9 +367,7 @@ def _decorate_run_detail(run: dict) -> dict:
         )
         skip_reason = row.get("skip_reason")
         decorated["skip_reason_label"] = (
-            _SKIP_REASON_LABELS.get(skip_reason, "Другая причина")
-            if skip_reason
-            else None
+            _SKIP_REASON_LABELS.get(skip_reason, "Другая причина") if skip_reason else None
         )
         decorated["rows_observed_label"] = _display_count(row.get("rows_observed"))
         decorated["duration_label"] = _format_duration_ms(row.get("duration_ms"))
@@ -391,7 +394,9 @@ def list_connections(slug: str):
             dsn_masked = "<ошибка дешифровки>"
         items.append({**c, "dsn_masked": dsn_masked})
     return render_template(
-        "connections/list.html", project=project, connections=items,
+        "connections/list.html",
+        project=project,
+        connections=items,
     )
 
 
@@ -414,11 +419,7 @@ def new_connection(slug: str):
         iceberg_ns = (form.iceberg_namespace.data or "").strip() or None
         iceberg_wh = (form.iceberg_warehouse.data or "").strip() or None
         iceberg_token = (form.iceberg_auth_token.data or "").strip()
-        token_ct = (
-            crypto.encrypt_token(iceberg_token)
-            if is_iceberg and iceberg_token
-            else None
-        )
+        token_ct = crypto.encrypt_token(iceberg_token) if is_iceberg and iceberg_token else None
         conn_row = metrics_storage.create_connection(
             connection_id=uuid.uuid4().hex,
             project_id=project["id"],
@@ -442,7 +443,10 @@ def new_connection(slug: str):
             # First tick immediately so the user sees metrics on /dashboard
             # right after save instead of waiting up to interval_minutes.
             add_job_for_connection(
-                get_scheduler(), project["id"], conn_row, run_immediately=True,
+                get_scheduler(),
+                project["id"],
+                conn_row,
+                run_immediately=True,
             )
 
         # Onboarding auto-test (#55): on the FIRST connection, probe the
@@ -473,14 +477,17 @@ def new_connection(slug: str):
             return redirect(url_for("connections.list_connections", slug=slug))
 
         flash("Подключение добавлено.", "success")
-        return redirect(url_for(
-            "connections.list_connections", slug=slug,
-        ))
-    template = (
-        "onboarding/add_connection.html" if is_first else "connections/new.html"
-    )
+        return redirect(
+            url_for(
+                "connections.list_connections",
+                slug=slug,
+            )
+        )
+    template = "onboarding/add_connection.html" if is_first else "connections/new.html"
     return render_template(
-        template, project=project, form=form,
+        template,
+        project=project,
+        form=form,
         onboarding=bool(request.args.get("onboarding")),
     )
 
@@ -584,12 +591,14 @@ def edit_safety(slug: str, conn_id: str):
                     raise ValueError
                 updates["skip_tables_larger_than_gb"] = sk_val
             except ValueError:
-                flash("skip_tables_larger_than_gb: ожидается положительное число.",
-                      "error")
+                flash("skip_tables_larger_than_gb: ожидается положительное число.", "error")
                 return render_template(
                     "connections/edit.html",
-                    project=project, conn=conn, form=form,
-                    is_iceberg=is_iceberg, is_postgres=is_postgres,
+                    project=project,
+                    conn=conn,
+                    form=form,
+                    is_iceberg=is_iceberg,
+                    is_postgres=is_postgres,
                 )
         updates["statement_timeout_ms"] = form.statement_timeout_ms.data
         # Mode: don't let an operator silently set sample/approx on a non-
@@ -603,8 +612,11 @@ def edit_safety(slug: str, conn_id: str):
             )
             return render_template(
                 "connections/edit.html",
-                project=project, conn=conn, form=form,
-                is_iceberg=is_iceberg, is_postgres=is_postgres,
+                project=project,
+                conn=conn,
+                form=form,
+                is_iceberg=is_iceberg,
+                is_postgres=is_postgres,
             )
         updates["collection_mode"] = mode
 
@@ -616,12 +628,8 @@ def edit_safety(slug: str, conn_id: str):
                 form.iceberg_namespace_allowlist.data,
             )
             updates["metadata_only_mode"] = 1 if form.metadata_only_mode.data else 0
-            updates["iceberg_namespace"] = (
-                (form.iceberg_namespace.data or "").strip() or None
-            )
-            updates["iceberg_warehouse"] = (
-                (form.iceberg_warehouse.data or "").strip() or None
-            )
+            updates["iceberg_namespace"] = (form.iceberg_namespace.data or "").strip() or None
+            updates["iceberg_warehouse"] = (form.iceberg_warehouse.data or "").strip() or None
             new_token = (form.iceberg_auth_token.data or "").strip()
             if form.iceberg_auth_token_clear.data:
                 updates["iceberg_auth_token_encrypted"] = None
@@ -630,7 +638,9 @@ def edit_safety(slug: str, conn_id: str):
             # else: leave existing token alone (no key added → no UPDATE clause).
 
         metrics_storage.update_connection_safety(
-            project_id=project["id"], connection_id=conn["id"], updates=updates,
+            project_id=project["id"],
+            connection_id=conn["id"],
+            updates=updates,
         )
         if dsn_changed:
             result = probe_connection(
@@ -645,9 +655,13 @@ def edit_safety(slug: str, conn_id: str):
 
     return render_template(
         "connections/edit.html",
-        project=project, conn=conn, form=form,
-        is_iceberg=is_iceberg, is_postgres=is_postgres,
-        role=role, dsn_masked=dsn_masked,
+        project=project,
+        conn=conn,
+        form=form,
+        is_iceberg=is_iceberg,
+        is_postgres=is_postgres,
+        role=role,
+        dsn_masked=dsn_masked,
     )
 
 
@@ -659,9 +673,7 @@ def collector_run_detail(slug: str, conn_id: str, run_id: str):
 
     requested_status = request.args.get("status")
     status_filter = (
-        requested_status
-        if requested_status in {"failed", "skipped", "success"}
-        else None
+        requested_status if requested_status in {"failed", "skipped", "success"} else None
     )
     run = metrics_storage.get_collector_run_detail(
         project["id"],
@@ -734,7 +746,8 @@ def test_connection(slug: str, conn_id: str):
         plain = crypto.decrypt_dsn(conn["dsn_encrypted"])
     except crypto.InvalidToken:
         result = {
-            "status": "error", "code": "invalid_ciphertext",
+            "status": "error",
+            "code": "invalid_ciphertext",
             "message": "Сохранённый DSN не расшифровывается. Пересохрани подключение.",
         }
         _persist_probe_result(project["id"], conn["id"], result)
@@ -751,10 +764,10 @@ def test_connection(slug: str, conn_id: str):
             )
         except crypto.InvalidToken:
             result = {
-                "status": "error", "code": "invalid_ciphertext",
+                "status": "error",
+                "code": "invalid_ciphertext",
                 "message": (
-                    "Сохранённый Iceberg auth token не расшифровывается. "
-                    "Пересохрани подключение."
+                    "Сохранённый Iceberg auth token не расшифровывается. Пересохрани подключение."
                 ),
             }
             _persist_probe_result(project["id"], conn["id"], result)
@@ -779,7 +792,9 @@ def toggle(slug: str, conn_id: str):
         abort(403)
     new_active = not conn["is_active"]
     metrics_storage.set_connection_active(
-        project["id"], conn["id"], is_active=new_active,
+        project["id"],
+        conn["id"],
+        is_active=new_active,
     )
     # #54: keep the scheduler in sync with the row's is_active flag.
     from collectors.per_project import (
@@ -793,7 +808,9 @@ def toggle(slug: str, conn_id: str):
         # Same as create: kick the first tick now — toggling on is a
         # deliberate user action expecting fresh metrics promptly.
         add_job_for_connection(
-            sched, project["id"], {**conn, "is_active": True},
+            sched,
+            project["id"],
+            {**conn, "is_active": True},
             run_immediately=True,
         )
     else:
@@ -940,14 +957,18 @@ def _probe_iceberg(
     started = time.monotonic()
     try:
         from app.db import make_adapter_for_url
+
         adapter = make_adapter_for_url(
-            dsn, warehouse=warehouse, auth_token=auth_token,
+            dsn,
+            warehouse=warehouse,
+            auth_token=auth_token,
         )
         namespaces = adapter.list_namespaces()
         if namespace:
             # Normalise: pyiceberg returns ((ns,),) or ((parent, child),).
-            existing = {".".join(ns) if isinstance(ns, tuple | list)
-                        else str(ns) for ns in namespaces}
+            existing = {
+                ".".join(ns) if isinstance(ns, tuple | list) else str(ns) for ns in namespaces
+            }
             if namespace not in existing:
                 latency_ms = int((time.monotonic() - started) * 1000)
                 return {
@@ -965,9 +986,7 @@ def _probe_iceberg(
             # section is intentionally omitted (Iceberg has no
             # SELECT/INSERT grants to surface); the JS renderer drops it
             # when ``privileges`` is absent.
-            tables_preview = [
-                t["table_name"] for t in tables[:_PROBE_TABLES_PREVIEW]
-            ]
+            tables_preview = [t["table_name"] for t in tables[:_PROBE_TABLES_PREVIEW]]
             latency_ms = int((time.monotonic() - started) * 1000)
             return {
                 "status": "ok",
@@ -986,7 +1005,8 @@ def _probe_iceberg(
         }
     except ImportError:
         return {
-            "status": "error", "code": "unsupported_dialect",
+            "status": "error",
+            "code": "unsupported_dialect",
             "message": "pyiceberg не установлен на сервере.",
         }
     except Exception as exc:
@@ -996,7 +1016,8 @@ def _probe_iceberg(
         logger.warning("iceberg probe failed: %s", exc, exc_info=True)
         latency_ms = int((time.monotonic() - started) * 1000)
         return {
-            "status": "error", "code": "catalog_error",
+            "status": "error",
+            "code": "catalog_error",
             "message": "Iceberg catalog недоступен или DSN неверен.",
             "latency_ms": latency_ms,
         }
@@ -1026,11 +1047,13 @@ def _probe_clickhouse(dsn: str) -> dict:
             conn.execute(text("SELECT 1"))
             row = conn.execute(text("SELECT version()")).fetchone()
             try:
-                t_rows = conn.execute(text(
-                    "SELECT name FROM system.tables "
-                    "WHERE database = currentDatabase() "
-                    "ORDER BY name LIMIT 10"
-                )).fetchall()
+                t_rows = conn.execute(
+                    text(
+                        "SELECT name FROM system.tables "
+                        "WHERE database = currentDatabase() "
+                        "ORDER BY name LIMIT 10"
+                    )
+                ).fetchall()
                 tables_preview = [r[0] for r in t_rows]
                 tables_found = len(tables_preview)
             except Exception:
@@ -1049,7 +1072,9 @@ def _probe_clickhouse(dsn: str) -> dict:
         logger.warning("clickhouse probe failed: %s", exc, exc_info=True)
         code, user_msg = _classify_error(exc)
         return {
-            "status": "error", "code": code, "message": user_msg,
+            "status": "error",
+            "code": code,
+            "message": user_msg,
             "latency_ms": int((time.monotonic() - started) * 1000),
         }
     finally:
@@ -1077,7 +1102,8 @@ def probe_connection(
         backend = make_url(dsn).get_backend_name()
     except Exception:
         return {
-            "status": "error", "code": "invalid_dsn",
+            "status": "error",
+            "code": "invalid_dsn",
             "message": "DSN не парсится как URL.",
         }
 
@@ -1094,7 +1120,8 @@ def probe_connection(
 
     if backend != "postgresql":
         return {
-            "status": "error", "code": "unsupported_dialect",
+            "status": "error",
+            "code": "unsupported_dialect",
             "message": f"Тест для диалекта {backend!r} ещё не реализован.",
         }
 
@@ -1111,15 +1138,14 @@ def probe_connection(
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-            row = conn.execute(
-                text("SELECT current_database(), version()")
-            ).fetchone()
+            row = conn.execute(text("SELECT current_database(), version()")).fetchone()
 
             # #229/#230 smoke-check. Все запросы — SELECT-only, никакой
             # записи. Schema берётся из dsn-query-param ``schema`` если
             # передан, иначе settings.MONITORED_SCHEMA — то же значение,
             # с которым реальный сборщик будет ходить в БД.
             from app.config import settings as _settings
+
             try:
                 target_schema = (
                     make_url(dsn).query.get("schema")  # SQLAlchemy URL.query
@@ -1131,10 +1157,12 @@ def probe_connection(
             # #229: USAGE на схему — без него адаптер ничего не увидит.
             # has_schema_privilege возвращает NULL для несуществующей
             # схемы → coalesce, чтобы не упасть на None.
-            usage_row = conn.execute(text(
-                "SELECT COALESCE(has_schema_privilege(current_user, "
-                ":schema, 'USAGE'), false)"
-            ), {"schema": target_schema}).fetchone()
+            usage_row = conn.execute(
+                text(
+                    "SELECT COALESCE(has_schema_privilege(current_user, :schema, 'USAGE'), false)"
+                ),
+                {"schema": target_schema},
+            ).fetchone()
             has_usage = bool(usage_row[0]) if usage_row else False
 
             if not has_usage:
@@ -1152,12 +1180,15 @@ def probe_connection(
 
             # #230: list tables — берём первые
             # _PROBE_TABLES_PREVIEW для UI-preview, считаем total.
-            tables_rows = conn.execute(text(
-                "SELECT table_name FROM information_schema.tables "
-                "WHERE table_schema = :schema "
-                "  AND table_type = 'BASE TABLE' "
-                "ORDER BY table_name"
-            ), {"schema": target_schema}).fetchall()
+            tables_rows = conn.execute(
+                text(
+                    "SELECT table_name FROM information_schema.tables "
+                    "WHERE table_schema = :schema "
+                    "  AND table_type = 'BASE TABLE' "
+                    "ORDER BY table_name"
+                ),
+                {"schema": target_schema},
+            ).fetchall()
             all_tables = [r[0] for r in tables_rows]
             tables_preview = all_tables[:_PROBE_TABLES_PREVIEW]
             tables_found = len(all_tables)
@@ -1170,13 +1201,16 @@ def probe_connection(
             has_insert = False
             for tbl in all_tables[:_PROBE_PRIV_CHECK]:
                 qualified = f'"{target_schema}"."{tbl}"'
-                row_p = conn.execute(text(
-                    "SELECT "
-                    "  COALESCE(has_table_privilege(current_user, "
-                    "    :q, 'SELECT'), false), "
-                    "  COALESCE(has_table_privilege(current_user, "
-                    "    :q, 'INSERT'), false)"
-                ), {"q": qualified}).fetchone()
+                row_p = conn.execute(
+                    text(
+                        "SELECT "
+                        "  COALESCE(has_table_privilege(current_user, "
+                        "    :q, 'SELECT'), false), "
+                        "  COALESCE(has_table_privilege(current_user, "
+                        "    :q, 'INSERT'), false)"
+                    ),
+                    {"q": qualified},
+                ).fetchone()
                 if row_p:
                     if row_p[0]:
                         has_select = True
@@ -1207,7 +1241,9 @@ def probe_connection(
         logger.warning("connection probe failed: %s", exc, exc_info=True)
         code, user_msg = _classify_error(exc)
         return {
-            "status": "error", "code": code, "message": user_msg,
+            "status": "error",
+            "code": code,
+            "message": user_msg,
             "latency_ms": int((time.monotonic() - started) * 1000),
         }
     finally:

@@ -106,7 +106,12 @@ def test_column_nulls(mock_conn):
     result = column_nulls("users", schema="public")
 
     assert len(result) == 3
-    assert result[0] == {"column": "email", "data_type": "text", "null_count": 50, "null_rate": 0.05}
+    assert result[0] == {
+        "column": "email",
+        "data_type": "text",
+        "null_count": 50,
+        "null_rate": 0.05,
+    }
     assert result[1] == {"column": "age", "data_type": "integer", "null_count": 0, "null_rate": 0.0}
     assert result[2] == {"column": "name", "data_type": "text", "null_count": 10, "null_rate": 0.01}
 

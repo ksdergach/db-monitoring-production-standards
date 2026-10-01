@@ -38,19 +38,18 @@ def _seed_events_clickhouse_project(storage) -> tuple[str, str]:
     """Create a user + the events-clickhouse project + connection so the
     orchestrator can find them without poking the real seed_demo_workspace."""
     uid = uuid.uuid4().hex
-    storage.create_user(user_id=uid, email="demo@dbmonitor.app",
-                        password_hash="x")
+    storage.create_user(user_id=uid, email="demo@dbmonitor.app", password_hash="x")
     project = storage.create_project(
-        project_id=uuid.uuid4().hex, user_id=uid,
-        name="Events ClickHouse", slug="events-clickhouse",
+        project_id=uuid.uuid4().hex,
+        user_id=uid,
+        name="Events ClickHouse",
+        slug="events-clickhouse",
     )
     conn = storage.create_connection(
         connection_id=uuid.uuid4().hex,
         project_id=project["id"],
         name="Local ClickHouse",
-        dsn_encrypted=crypto.encrypt_dsn(
-            "clickhouse+native://default@localhost:19000/demo"
-        ),
+        dsn_encrypted=crypto.encrypt_dsn("clickhouse+native://default@localhost:19000/demo"),
         schema_name="demo",
         interval_minutes=15,
         is_active=True,
@@ -85,10 +84,11 @@ def test_seed_history_writes_metrics_under_project(storage):
 
     # Cross-check: rows in metrics table are tagged with the right pid.
     from sqlalchemy import text
+
     with storage.get_engine().connect() as conn:
-        n = conn.execute(text(
-            "SELECT COUNT(*) FROM metrics WHERE project_id = :pid"
-        ), {"pid": pid}).scalar()
+        n = conn.execute(
+            text("SELECT COUNT(*) FROM metrics WHERE project_id = :pid"), {"pid": pid}
+        ).scalar()
     assert n > 0
 
 
@@ -103,9 +103,9 @@ def test_seed_history_includes_row_count_size_and_null_rate(storage):
     seed_clickhouse_history(pid, days=2, interval_minutes=60)
 
     with storage.get_engine().connect() as conn:
-        metric_names = conn.execute(text(
-            "SELECT DISTINCT metric_name FROM metrics WHERE project_id = :pid"
-        ), {"pid": pid}).fetchall()
+        metric_names = conn.execute(
+            text("SELECT DISTINCT metric_name FROM metrics WHERE project_id = :pid"), {"pid": pid}
+        ).fetchall()
     names = {r[0] for r in metric_names}
     assert "row_count" in names
     assert "size_bytes" in names
@@ -127,15 +127,22 @@ def test_purge_history_removes_only_target_project(storage):
     # Project B with one stray metric row.
     storage.create_user(user_id="u-b", email="b@example.com", password_hash="x")
     pid_b = storage.create_project(
-        project_id="proj-b", user_id="u-b",
-        name="Other", slug="other-project",
+        project_id="proj-b",
+        user_id="u-b",
+        name="Other",
+        slug="other-project",
     )["id"]
-    storage.save_metrics([{
-        "ts": datetime.now(UTC),
-        "table_name": "stranger",
-        "metric_name": "row_count",
-        "value": 42.0,
-    }], pid_b)
+    storage.save_metrics(
+        [
+            {
+                "ts": datetime.now(UTC),
+                "table_name": "stranger",
+                "metric_name": "row_count",
+                "value": 42.0,
+            }
+        ],
+        pid_b,
+    )
 
     seed_clickhouse_history(pid_a, days=2, interval_minutes=60)
     # Now purge A — B's row should still be there.
@@ -143,9 +150,9 @@ def test_purge_history_removes_only_target_project(storage):
     assert deleted > 0
 
     with storage.get_engine().connect() as conn:
-        b_count = conn.execute(text(
-            "SELECT COUNT(*) FROM metrics WHERE project_id = :pid"
-        ), {"pid": pid_b}).scalar()
+        b_count = conn.execute(
+            text("SELECT COUNT(*) FROM metrics WHERE project_id = :pid"), {"pid": pid_b}
+        ).scalar()
     assert b_count == 1
 
 
@@ -176,10 +183,12 @@ def test_repair_connection_reencrypts_when_fernet_changed(storage, monkeypatch):
     # Перетираем ciphertext "поломанным" значением — decrypt_dsn кинет
     # InvalidToken на ходу.
     from sqlalchemy import text
+
     with storage.get_engine().begin() as conn:
-        conn.execute(text(
-            "UPDATE connections SET dsn_encrypted = :bad WHERE id = :cid"
-        ), {"bad": b"not-a-valid-fernet-blob", "cid": cid})
+        conn.execute(
+            text("UPDATE connections SET dsn_encrypted = :bad WHERE id = :cid"),
+            {"bad": b"not-a-valid-fernet-blob", "cid": cid},
+        )
 
     _repair_clickhouse_connection(pid, cid)
 
@@ -202,10 +211,12 @@ def test_repair_connection_noop_when_dsn_correct(storage):
     pid, cid = _seed_events_clickhouse_project(storage)
     # Поставим правильный ciphertext для текущего ключа.
     with storage.get_engine().begin() as conn:
-        conn.execute(text(
-            "UPDATE connections SET dsn_encrypted = :good, schema_name = 'demo' "
-            "WHERE id = :cid"
-        ), {"good": crypto.encrypt_dsn(APP_DSN), "cid": cid})
+        conn.execute(
+            text(
+                "UPDATE connections SET dsn_encrypted = :good, schema_name = 'demo' WHERE id = :cid"
+            ),
+            {"good": crypto.encrypt_dsn(APP_DSN), "cid": cid},
+        )
 
     # Прямой UPDATE — repair не должен ничего поменять. Чтобы проверить,
     # фиксируем ciphertext до и после.
@@ -215,9 +226,8 @@ def test_repair_connection_noop_when_dsn_correct(storage):
     # Точное равенство ciphertext — Fernet детерминированный с фиксированным
     # nonce только если nonce одинаков. Тут другой путь: убеждаемся что
     # дешифровка даёт ТО ЖЕ значение.
-    assert (
-        crypto.decrypt_dsn(conn_before["dsn_encrypted"]) ==
-        crypto.decrypt_dsn(conn_after["dsn_encrypted"])
+    assert crypto.decrypt_dsn(conn_before["dsn_encrypted"]) == crypto.decrypt_dsn(
+        conn_after["dsn_encrypted"]
     )
 
 
@@ -234,13 +244,18 @@ def test_prepare_clickhouse_demo_runs_full_pipeline(storage, monkeypatch):
     def fake_workspace(**kwargs):
         # seed_demo_workspace в реальности резолвит project_by_slug
         # через user_id; здесь возвращаем готовую ссылку.
-        project = {"id": pid_expected, "slug": "events-clickhouse",
-                    "user_id": "u-demo", "name": "Events ClickHouse"}
+        project = {
+            "id": pid_expected,
+            "slug": "events-clickhouse",
+            "user_id": "u-demo",
+            "name": "Events ClickHouse",
+        }
         conn = {"id": cid_expected, "project_id": pid_expected}
         return {
             "projects": {"events-clickhouse": project},
             "connections": {"events-clickhouse": conn},
         }
+
     monkeypatch.setattr(mod, "seed_demo_workspace", fake_workspace)
 
     # Stub live collector — иначе пытается реально подключиться к CH.
@@ -248,7 +263,8 @@ def test_prepare_clickhouse_demo_runs_full_pipeline(storage, monkeypatch):
 
     # Skip warmup_ml — оно само себя покрывает в test_demo_prepare.
     result = mod.prepare_clickhouse_demo(
-        days=2, interval_minutes=60,
+        days=2,
+        interval_minutes=60,
         warmup_ml=False,
         skip_live_collect=True,
     )
@@ -265,17 +281,24 @@ def test_prepare_handles_live_collect_failure(storage, monkeypatch):
 
     pid, cid = _seed_events_clickhouse_project(storage)
 
-    monkeypatch.setattr(mod, "seed_demo_workspace", lambda **kw: {
-        "projects": {"events-clickhouse": {"id": pid, "slug": "events-clickhouse"}},
-        "connections": {"events-clickhouse": {"id": cid, "project_id": pid}},
-    })
+    monkeypatch.setattr(
+        mod,
+        "seed_demo_workspace",
+        lambda **kw: {
+            "projects": {"events-clickhouse": {"id": pid, "slug": "events-clickhouse"}},
+            "connections": {"events-clickhouse": {"id": cid, "project_id": pid}},
+        },
+    )
 
     def boom(*_a, **_kw):
         raise RuntimeError("CH not running")
+
     monkeypatch.setattr(mod, "collect_for_connection", boom)
 
     # Should NOT raise — just print and continue with history backfill.
     result = mod.prepare_clickhouse_demo(
-        days=1, interval_minutes=60, warmup_ml=False,
+        days=1,
+        interval_minutes=60,
+        warmup_ml=False,
     )
     assert result["history"]["rows"] > 0

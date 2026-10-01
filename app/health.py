@@ -58,7 +58,9 @@ def _version() -> str:
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True, text=True, timeout=1,
+            capture_output=True,
+            text=True,
+            timeout=1,
             cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         )
         if result.returncode == 0 and result.stdout.strip():
@@ -96,6 +98,7 @@ def _check_monitor_db() -> dict:
 
 def _check_target_db() -> dict:
     from app.db import get_engine
+
     _ping_engine(get_engine())
     return {"status": "ok"}
 
@@ -106,6 +109,7 @@ def _check_ratelimit_storage(storage_uri: str) -> dict:
     # Lazy-import the limiter; importing at module top would create a cycle
     # (app.auth → app.metrics_storage → app.health, depending on load order).
     from app.auth import limiter
+
     # Flask-Limiter exposes a `limits`-style storage with a .check() method
     # that returns True if reachable.
     if not limiter.storage.check():
@@ -136,7 +140,11 @@ def _run_check(name: str, fn, *args) -> dict:
     except FuturesTimeout:
         elapsed_ms = int((time.monotonic() - start) * 1000)
         logger.warning("healthz: %s timed out after %dms", name, elapsed_ms)
-        return {"status": "down", "error": f"timeout > {HEALTH_TIMEOUT_S}s", "elapsed_ms": elapsed_ms}
+        return {
+            "status": "down",
+            "error": f"timeout > {HEALTH_TIMEOUT_S}s",
+            "elapsed_ms": elapsed_ms,
+        }
     except Exception as exc:
         elapsed_ms = int((time.monotonic() - start) * 1000)
         # Truncate the error — psycopg2 OperationalError can contain a
@@ -162,7 +170,9 @@ def build_health_payload(*, strict: bool, ratelimit_storage_uri: str) -> tuple[d
         "monitor_db": _run_check("monitor_db", _check_monitor_db),
         "target_db": _run_check("target_db", _check_target_db),
         "ratelimit_storage": _run_check(
-            "ratelimit_storage", _check_ratelimit_storage, ratelimit_storage_uri,
+            "ratelimit_storage",
+            _check_ratelimit_storage,
+            ratelimit_storage_uri,
         ),
         "smtp": _check_smtp(),
     }
@@ -171,10 +181,7 @@ def build_health_payload(*, strict: bool, ratelimit_storage_uri: str) -> tuple[d
     if (time.monotonic() - started) > _TOTAL_BUDGET_S:
         logger.error("healthz: total budget exceeded — investigate")
 
-    critical_checks = {
-        name: check for name, check in checks.items()
-        if name != "smtp"
-    }
+    critical_checks = {name: check for name, check in checks.items() if name != "smtp"}
     any_down = any(c["status"] == "down" for c in critical_checks.values())
     any_na = any(c["status"] == "n/a" for c in critical_checks.values())
 

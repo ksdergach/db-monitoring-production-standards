@@ -35,22 +35,27 @@ def _free_port() -> int:
 def switcher_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     """Real Flask с LOGIN_DISABLED=False — нужен реальный auth-flow."""
     import os
+
     os.environ["FERNET_KEY"] = Fernet.generate_key().decode()
 
     from app import crypto
+
     crypto.reset_for_tests()
 
     metrics_db = tmp_path_factory.mktemp("e2e-switcher") / "metrics.db"
 
     from app.config import settings
+
     settings.MONITOR_DB_URL = f"sqlite:///{metrics_db}"
 
     from app import metrics_storage
+
     metrics_storage._engine = None
     metrics_storage._initialized = False
     metrics_storage.get_engine()
 
     from app import db
+
     originals = {
         "list_tables": db.list_tables,
         "table_schema": db.table_schema,
@@ -66,12 +71,14 @@ def switcher_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
 
     from app.app import create_app
 
-    app = create_app({
-        "TESTING": True,
-        "LOGIN_DISABLED": False,
-        "WTF_CSRF_ENABLED": False,
-        "RATELIMIT_ENABLED": False,
-    })
+    app = create_app(
+        {
+            "TESTING": True,
+            "LOGIN_DISABLED": False,
+            "WTF_CSRF_ENABLED": False,
+            "RATELIMIT_ENABLED": False,
+        }
+    )
     port = _free_port()
 
     from werkzeug.serving import make_server
@@ -97,7 +104,8 @@ def _switcher_text(page: Page) -> str:
 
 
 def test_switcher_follows_url_slug_across_project_pages(
-    switcher_server: str, page: Page,
+    switcher_server: str,
+    page: Page,
 ):
     """Один сквозной сценарий — register → создать 2-й проект → пройти
     по slug-роутам и убедиться что шапка следует за URL."""
@@ -148,7 +156,8 @@ def test_switcher_follows_url_slug_across_project_pages(
 
 
 def test_projects_list_no_longer_renders_make_current_button(
-    switcher_server: str, page: Page,
+    switcher_server: str,
+    page: Page,
 ):
     """`templates/projects/list.html`: «Сделать текущим» убрана,
     бейдж «текущий» остаётся."""

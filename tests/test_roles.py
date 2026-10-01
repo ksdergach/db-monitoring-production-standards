@@ -26,13 +26,16 @@ def app(tmp_path, monkeypatch):
     monkeypatch.setattr(metrics_storage, "_initialized", False)
 
     import app.db
+
     monkeypatch.setattr(app.db, "list_tables", lambda schema=None: [])
 
-    return create_app({
-        "TESTING": True,
-        "LOGIN_DISABLED": False,
-        "WTF_CSRF_ENABLED": False,
-    })
+    return create_app(
+        {
+            "TESTING": True,
+            "LOGIN_DISABLED": False,
+            "WTF_CSRF_ENABLED": False,
+        }
+    )
 
 
 @pytest.fixture
@@ -42,10 +45,16 @@ def client(app):
 
 # --- helpers ---------------------------------------------------------------
 
+
 def _register(client, email, password="secret123"):
-    return client.post("/auth/register", data={
-        "email": email, "password": password, "confirm": password,
-    })
+    return client.post(
+        "/auth/register",
+        data={
+            "email": email,
+            "password": password,
+            "confirm": password,
+        },
+    )
 
 
 def _login(client, email, password="secret123"):
@@ -70,6 +79,7 @@ def _make_project(client, suffix=""):
 def _get_project_id_by_slug(app_ctx, slug):
     """Look up project_id by slug — works across all owners."""
     from sqlalchemy import text
+
     with app_ctx.app_context():
         with metrics_storage.get_engine().connect() as conn:
             row = conn.execute(
@@ -87,6 +97,7 @@ def _add_member(app_ctx, project_id, user_email, role):
 
 
 # --- shared fixture: owner + viewer ----------------------------------------
+
 
 @pytest.fixture
 def owner_viewer(app, client):
@@ -108,6 +119,7 @@ def owner_viewer(app, client):
 
 # --- shared fixture: owner + editor ----------------------------------------
 
+
 @pytest.fixture
 def owner_editor(app, client):
     """Registers owner + editor, adds editor to owner's project.
@@ -128,6 +140,7 @@ def owner_editor(app, client):
 
 # --- viewer enforcement ----------------------------------------------------
 
+
 def test_viewer_cannot_get_new_connection_form(client, owner_viewer):
     slug, _, _ = owner_viewer
     r = client.get(f"/projects/{slug}/connections/new")
@@ -136,10 +149,15 @@ def test_viewer_cannot_get_new_connection_form(client, owner_viewer):
 
 def test_viewer_cannot_post_new_connection(client, owner_viewer):
     slug, _, _ = owner_viewer
-    r = client.post(f"/projects/{slug}/connections/new", data={
-        "name": "x", "dsn": "postgresql://u:p@h/db",
-        "schema_name": "public", "interval_minutes": 15,
-    })
+    r = client.post(
+        f"/projects/{slug}/connections/new",
+        data={
+            "name": "x",
+            "dsn": "postgresql://u:p@h/db",
+            "schema_name": "public",
+            "interval_minutes": 15,
+        },
+    )
     assert r.status_code == 403
 
 
@@ -157,8 +175,7 @@ def test_viewer_cannot_post_notifications(client, owner_viewer):
 
 def test_viewer_cannot_add_member(client, owner_viewer):
     slug, _, _ = owner_viewer
-    r = client.post(f"/projects/{slug}/members/add",
-                    data={"email": "x@x.com", "role": "viewer"})
+    r = client.post(f"/projects/{slug}/members/add", data={"email": "x@x.com", "role": "viewer"})
     assert r.status_code == 403
 
 
@@ -179,6 +196,7 @@ def test_viewer_buttons_hidden_in_html(client, owner_viewer):
 
 # --- editor enforcement ----------------------------------------------------
 
+
 def test_editor_can_get_new_connection_form(client, owner_editor):
     slug, _, _ = owner_editor
     r = client.get(f"/projects/{slug}/connections/new")
@@ -193,8 +211,7 @@ def test_editor_cannot_delete_project(client, owner_editor):
 
 def test_editor_cannot_add_member(client, owner_editor):
     slug, _, _ = owner_editor
-    r = client.post(f"/projects/{slug}/members/add",
-                    data={"email": "x@x.com", "role": "viewer"})
+    r = client.post(f"/projects/{slug}/members/add", data={"email": "x@x.com", "role": "viewer"})
     assert r.status_code == 403
 
 
@@ -224,6 +241,7 @@ def test_editor_cannot_see_member_form(client, owner_editor):
 
 # --- owner member management -----------------------------------------------
 
+
 @pytest.fixture
 def owner_logged_in(app, client):
     """Registers owner, creates project, logs in as owner. Returns (slug, pid)."""
@@ -241,9 +259,11 @@ def test_owner_can_add_member(app, client, owner_logged_in):
     _logout(client)
     _login(client, "ownerX@test.com")
 
-    r = client.post(f"/projects/{slug}/members/add",
-                    data={"email": "newmember@test.com", "role": "viewer"},
-                    follow_redirects=True)
+    r = client.post(
+        f"/projects/{slug}/members/add",
+        data={"email": "newmember@test.com", "role": "viewer"},
+        follow_redirects=True,
+    )
     assert r.status_code == 200
 
     with app.app_context():
@@ -254,9 +274,11 @@ def test_owner_can_add_member(app, client, owner_logged_in):
 
 def test_owner_add_nonexistent_email_shows_error(app, client, owner_logged_in):
     slug, _ = owner_logged_in
-    r = client.post(f"/projects/{slug}/members/add",
-                    data={"email": "ghost@nowhere.com", "role": "viewer"},
-                    follow_redirects=True)
+    r = client.post(
+        f"/projects/{slug}/members/add",
+        data={"email": "ghost@nowhere.com", "role": "viewer"},
+        follow_redirects=True,
+    )
     assert r.status_code == 200
     assert "не найден" in r.data.decode()
 
@@ -267,8 +289,7 @@ def test_owner_cannot_remove_self(app, client, owner_logged_in):
         members = metrics_storage.list_project_members(pid)
         owner_id = next(m["user_id"] for m in members if m["role"] == "owner")
 
-    r = client.post(f"/projects/{slug}/members/{owner_id}/remove",
-                    follow_redirects=True)
+    r = client.post(f"/projects/{slug}/members/{owner_id}/remove", follow_redirects=True)
     assert r.status_code == 200
     assert "Нельзя удалить себя" in r.data.decode()
 
@@ -288,8 +309,7 @@ def test_owner_cannot_remove_owner_role(app, client, owner_logged_in):
     _logout(client)
     _login(client, "ownerX@test.com")
 
-    r = client.post(f"/projects/{slug}/members/{co['id']}/remove",
-                    follow_redirects=True)
+    r = client.post(f"/projects/{slug}/members/{co['id']}/remove", follow_redirects=True)
     assert r.status_code == 200  # viewer removed successfully
 
 
@@ -307,6 +327,7 @@ def test_members_section_visible_to_owner(app, client, owner_logged_in):
 
 
 # --- connections/list.html UI buttons for viewer/editor --------------------
+
 
 def test_viewer_no_action_buttons_on_connections_list(client, owner_viewer):
     """Viewer sees the connections list but no Тест/Включить/Удалить buttons."""
@@ -334,6 +355,7 @@ def test_viewer_no_add_button_on_connections_list(client, owner_viewer):
 
 
 # --- projects/list.html UI buttons ----------------------------------------
+
 
 def test_viewer_no_telegram_for_shared_project_on_list(app, client):
     """Viewer sees NO Telegram/Notifications link for the shared project."""
@@ -393,6 +415,7 @@ def test_editor_sees_telegram_no_delete_on_projects_list(app, client):
 
 
 # --- base.html sidebar Telegram -------------------------------------------
+
 
 def test_viewer_no_telegram_in_sidebar(client, owner_viewer):
     """When viewer is on dashboard, sidebar has no Telegram link."""

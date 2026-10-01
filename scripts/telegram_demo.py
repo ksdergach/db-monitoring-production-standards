@@ -84,10 +84,7 @@ def _require_env() -> tuple[str, str]:
     token = settings.TELEGRAM_BOT_TOKEN.strip()
     chat_id = settings.TELEGRAM_CHAT_ID.strip()
     if not token or not chat_id:
-        msg = (
-            "TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are required in .env "
-            "or the environment."
-        )
+        msg = "TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are required in .env or the environment."
         raise SystemExit(msg)
     return token, chat_id
 
@@ -106,9 +103,7 @@ def _load_cfg(project: dict) -> tuple[str, str, int]:
     """Return (bot_token, chat_id, throttle_minutes) or raise SystemExit."""
     cfg = metrics_storage.get_project_notifications(project["id"])
     if not cfg or not cfg.get("telegram_bot_token") or not cfg.get("telegram_chat_id"):
-        raise SystemExit(
-            f"Telegram settings are not configured for {project['name']}."
-        )
+        raise SystemExit(f"Telegram settings are not configured for {project['name']}.")
     try:
         token = crypto.decrypt_token(cfg["telegram_bot_token"])
     except crypto.InvalidToken as exc:
@@ -136,10 +131,7 @@ def test(projects: tuple[DemoTelegramProject, ...]) -> None:
     failed = False
     for spec in projects:
         project = _resolve_project(spec)
-        text = (
-            "✅ DB Monitor demo Telegram test\n"
-            f"Project: {project['name']} ({project['slug']})"
-        )
+        text = f"✅ DB Monitor demo Telegram test\nProject: {project['name']} ({project['slug']})"
         ok, error = send_message(text, bot_token=token, chat_id=chat_id)
         if ok:
             print(f"test sent: {project['name']} ({project['slug']})")
@@ -165,26 +157,23 @@ def alert(projects: tuple[DemoTelegramProject, ...], *, respect_throttle: bool) 
             throttle_minutes=throttle,
             metric=spec.metric,
         )
-        print(
-            "alert attempted: "
-            f"{project['name']} ({project['slug']}) {spec.table}/{spec.metric}"
-        )
+        print(f"alert attempted: {project['name']} ({project['slug']}) {spec.table}/{spec.metric}")
 
 
-def schema_drift(
-    projects: tuple[DemoTelegramProject, ...], *, delay: int
-) -> None:
+def schema_drift(projects: tuple[DemoTelegramProject, ...], *, delay: int) -> None:
     """Send a synthetic schema_drift notification per project with a pause between them."""
     for i, spec in enumerate(projects):
         project = _resolve_project(spec)
         token, chat_id, _ = _load_cfg(project)
-        synthetic_events = [{
-            "ts": datetime.now(UTC).isoformat(timespec="seconds"),
-            "table_name": spec.table,
-            "change_type": "column_added",
-            "column_name": "revenue",
-            "details": {"after": {"type": "numeric"}},
-        }]
+        synthetic_events = [
+            {
+                "ts": datetime.now(UTC).isoformat(timespec="seconds"),
+                "table_name": spec.table,
+                "change_type": "column_added",
+                "column_name": "revenue",
+                "details": {"after": {"type": "numeric"}},
+            }
+        ]
         notify_schema_drift(
             project["id"],
             spec.table,
@@ -198,9 +187,7 @@ def schema_drift(
             time.sleep(delay)
 
 
-def changepoint(
-    projects: tuple[DemoTelegramProject, ...], *, delay: int
-) -> None:
+def changepoint(projects: tuple[DemoTelegramProject, ...], *, delay: int) -> None:
     """Send a synthetic changepoint notification per project with a pause between them."""
     for i, spec in enumerate(projects):
         project = _resolve_project(spec)

@@ -27,28 +27,30 @@ def pg_container():
 
 @pytest.fixture(scope="module")
 def pg_url(pg_container) -> str:
-    return pg_container.get_connection_url().replace(
-        "postgresql+psycopg2", "postgresql"
-    )
+    return pg_container.get_connection_url().replace("postgresql+psycopg2", "postgresql")
 
 
 @pytest.fixture(scope="module", autouse=True)
 def _seed_monitored_db(pg_container):
     engine = create_engine(pg_container.get_connection_url(), future=True)
     with engine.begin() as conn:
-        conn.execute(text("""
+        conn.execute(
+            text("""
             CREATE TABLE orders (
                 id    SERIAL PRIMARY KEY,
                 total NUMERIC(10, 2) NOT NULL,
                 email TEXT
             )
-        """))
-        conn.execute(text("""
+        """)
+        )
+        conn.execute(
+            text("""
             INSERT INTO orders (total, email) VALUES
                 (10.00, 'a@x.io'),
                 (20.00, NULL),
                 (30.00, 'c@x.io')
-        """))
+        """)
+        )
         # Populate pg_stat_user_tables so table_stats returns row_count=3.
         conn.execute(text("ANALYZE orders"))
     engine.dispose()

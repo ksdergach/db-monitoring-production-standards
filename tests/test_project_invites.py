@@ -34,19 +34,24 @@ from app.app import create_app
 def app(tmp_path, monkeypatch):
     db_path = tmp_path / "invites.db"
     monkeypatch.setattr(
-        metrics_storage.settings, "MONITOR_DB_URL", f"sqlite:///{db_path}",
+        metrics_storage.settings,
+        "MONITOR_DB_URL",
+        f"sqlite:///{db_path}",
     )
     monkeypatch.setattr(metrics_storage, "_engine", None)
     monkeypatch.setattr(metrics_storage, "_initialized", False)
 
     import app.db
+
     monkeypatch.setattr(app.db, "list_tables", lambda schema=None: [])
 
-    return create_app({
-        "TESTING": True,
-        "LOGIN_DISABLED": False,
-        "WTF_CSRF_ENABLED": False,
-    })
+    return create_app(
+        {
+            "TESTING": True,
+            "LOGIN_DISABLED": False,
+            "WTF_CSRF_ENABLED": False,
+        }
+    )
 
 
 @pytest.fixture
@@ -61,11 +66,17 @@ def _register(client, email, password="secret123", next_url=None):
     url = "/auth/register"
     if next_url:
         url += f"?next={next_url}"
-    resp = client.post(url, data={
-        "email": email, "password": password, "confirm": password,
-    })
+    resp = client.post(
+        url,
+        data={
+            "email": email,
+            "password": password,
+            "confirm": password,
+        },
+    )
     from app.metrics_storage import get_user_by_email
     from app.projects import create_default_project_for
+
     user = get_user_by_email(email)
     if user and not next_url:
         create_default_project_for(user["id"])
@@ -242,8 +253,7 @@ def test_unauthenticated_redirects_to_register(app, client, owner_with_project):
     location = r.headers["Location"]
     assert "/auth/register" in location
     # next= must point back to /invite/<token>
-    assert f"invite%2F{invite['token']}" in location or \
-           f"invite/{invite['token']}" in location
+    assert f"invite%2F{invite['token']}" in location or f"invite/{invite['token']}" in location
 
 
 def test_register_with_next_completes_invite(app, client, owner_with_project):
@@ -278,7 +288,9 @@ def test_register_with_next_completes_invite(app, client, owner_with_project):
 
 
 def test_register_via_invite_skips_default_project(
-    app, client, owner_with_project,
+    app,
+    client,
+    owner_with_project,
 ):
     """A user who registers from /invite/<token>?next=... must NOT get an
     auto-created personal "Default" project — they came here to join the
@@ -323,15 +335,17 @@ def test_expired_token_rejected(app, client, owner_with_project):
     with app.app_context():
         owner = metrics_storage.get_user_by_email("owner@inv.com")
         invite = metrics_storage.create_invite_token(
-            pid, "viewer", owner["id"], ttl=timedelta(seconds=1),
+            pid,
+            "viewer",
+            owner["id"],
+            ttl=timedelta(seconds=1),
         )
         # Force-expire by rewriting expires_at directly.
         with metrics_storage.get_engine().begin() as conn:
             conn.execute(
                 text("UPDATE project_invites SET expires_at = :e WHERE token = :t"),
                 {
-                    "e": (datetime.now(UTC) - timedelta(days=1))
-                    .isoformat(timespec="seconds"),
+                    "e": (datetime.now(UTC) - timedelta(days=1)).isoformat(timespec="seconds"),
                     "t": invite["token"],
                 },
             )
@@ -380,7 +394,9 @@ def test_nonexistent_token_404(app, client, owner_with_project):
 
 
 def test_existing_member_not_burned_by_clicking_own_invite(
-    app, client, owner_with_project,
+    app,
+    client,
+    owner_with_project,
 ):
     """Owner clicks an invite for their own project — token stays unused."""
     slug, pid = owner_with_project

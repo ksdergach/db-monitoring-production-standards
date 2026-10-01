@@ -103,11 +103,10 @@ def test_theme_toggle_persists_in_localstorage(live_dashboard: str, page: Page):
     # Reload and verify the stored theme wins (no flash → the inline head
     # script applies the class synchronously before paint).
     page.reload()
-    has_dark = page.evaluate(
-        "() => document.documentElement.classList.contains('dark')"
-    )
-    assert has_dark == (stored == "dark"), \
+    has_dark = page.evaluate("() => document.documentElement.classList.contains('dark')")
+    assert has_dark == (stored == "dark"), (
         f"theme={stored} but dark class={'present' if has_dark else 'absent'} after reload"
+    )
 
 
 def test_empty_chart_state_on_table_without_history(live_dashboard: str, page: Page):

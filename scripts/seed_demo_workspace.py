@@ -30,13 +30,15 @@ DEFAULT_CLICKHOUSE_DSN = "clickhouse+native://default@localhost:19000/demo"
 
 
 def default_iceberg_dsn() -> str:
-    params = urlencode({
-        "warehouse": "s3://iceberg-smoke/warehouse",
-        "s3.endpoint": "http://localhost:9000",
-        "s3.access-key-id": "minioadmin",
-        "s3.secret-access-key": "minioadmin",
-        "s3.path-style-access": "true",
-    })
+    params = urlencode(
+        {
+            "warehouse": "s3://iceberg-smoke/warehouse",
+            "s3.endpoint": "http://localhost:9000",
+            "s3.access-key-id": "minioadmin",
+            "s3.secret-access-key": "minioadmin",
+            "s3.path-style-access": "true",
+        }
+    )
     return f"iceberg+rest://localhost:8181?{params}"
 
 
@@ -226,10 +228,7 @@ def _print_summary(result: dict) -> None:
     retail = result["projects"]["retail-postgres"]
     retail_conn = result["connections"]["retail-postgres"]
     print("\nNext Postgres demo commands:")
-    print(
-        "  python -m scripts.seed_metrics_db --reset "
-        f"--project-id {retail['id']}"
-    )
+    print(f"  python -m scripts.seed_metrics_db --reset --project-id {retail['id']}")
     print(f"  python -m scripts.warmup_ml --project-id {retail['id']}")
     print(
         "  python -m scripts.live_demo "

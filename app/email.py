@@ -37,6 +37,7 @@ class SentMessage:
     Tests assert against ``app.email.outbox`` to verify routing logic
     without spinning up an SMTP server.
     """
+
     to: str
     subject: str
     body: str
@@ -91,9 +92,7 @@ def send_email(to: str, subject: str, body: str) -> bool:
         return _send_smtp(to, subject, body)
     with _outbox_lock:
         outbox.append(SentMessage(to=to, subject=subject, body=body))
-    logger.warning(
-        "SMTP not configured; using memory email backend; email NOT delivered"
-    )
+    logger.warning("SMTP not configured; using memory email backend; email NOT delivered")
     return True
 
 

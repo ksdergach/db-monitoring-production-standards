@@ -9,6 +9,7 @@ Covers:
 - Auth-token rotation: empty = leave alone, value = re-encrypt, "clear" = NULL.
 - Owner/editor only; stranger gets 403.
 """
+
 from __future__ import annotations
 
 import json
@@ -23,19 +24,25 @@ from app.app import create_app
 def _fernet_key(monkeypatch):
     monkeypatch.setenv("FERNET_KEY", Fernet.generate_key().decode())
     from app import crypto
+
     crypto.reset_for_tests()
 
 
 @pytest.fixture
 def app_(tmp_path, monkeypatch):
     import app.metrics_storage as ms
+
     db_path = tmp_path / "safety.db"
     monkeypatch.setattr(ms.settings, "MONITOR_DB_URL", f"sqlite:///{db_path}")
     monkeypatch.setattr(ms, "_engine", None)
     monkeypatch.setattr(ms, "_initialized", False)
-    return create_app({
-        "TESTING": True, "LOGIN_DISABLED": False, "WTF_CSRF_ENABLED": False,
-    })
+    return create_app(
+        {
+            "TESTING": True,
+            "LOGIN_DISABLED": False,
+            "WTF_CSRF_ENABLED": False,
+        }
+    )
 
 
 @pytest.fixture
@@ -44,11 +51,17 @@ def client(app_):
 
 
 def _register(client, email="u@example.com"):
-    client.post("/auth/register", data={
-        "email": email, "password": "supersecret1", "confirm": "supersecret1",
-    })
+    client.post(
+        "/auth/register",
+        data={
+            "email": email,
+            "password": "supersecret1",
+            "confirm": "supersecret1",
+        },
+    )
     from app.metrics_storage import get_user_by_email
     from app.projects import create_default_project_for
+
     user = get_user_by_email(email)
     if user:
         create_default_project_for(user["id"])
@@ -58,8 +71,11 @@ def _add_pg(client, dsn="postgresql://u:p@h:5432/d"):
     client.post(
         "/projects/default/connections/new",
         data={
-            "name": "PG", "dsn": dsn,
-            "schema_name": "public", "interval_minutes": 15, "is_active": "y",
+            "name": "PG",
+            "dsn": dsn,
+            "schema_name": "public",
+            "interval_minutes": 15,
+            "is_active": "y",
         },
     )
 
@@ -68,8 +84,11 @@ def _add_iceberg(client):
     client.post(
         "/projects/default/connections/new",
         data={
-            "name": "Lake", "dsn": "iceberg+rest://cat:8181?warehouse=s3://b/w",
-            "schema_name": "default", "interval_minutes": 15, "is_active": "y",
+            "name": "Lake",
+            "dsn": "iceberg+rest://cat:8181?warehouse=s3://b/w",
+            "schema_name": "default",
+            "interval_minutes": 15,
+            "is_active": "y",
             "iceberg_namespace": "lakehouse",
             "iceberg_auth_token": "initial-token",
         },
@@ -82,6 +101,7 @@ def _conn_id(client, email="u@example.com"):
         list_connections_for_project,
         list_projects_for_user,
     )
+
     u = get_user_by_email(email)
     p = list_projects_for_user(u["id"])[0]
     return p["id"], list_connections_for_project(p["id"])[0]["id"]
@@ -98,18 +118,22 @@ def test_edit_get_renders_form_with_db_values(client):
     from sqlalchemy import text
 
     from app.metrics_storage import get_engine
+
     with get_engine().begin() as c:
-        c.execute(text(
-            "UPDATE connections SET table_allowlist = :al, "
-            "max_tables_per_tick = 7, collection_mode = 'sample' "
-            "WHERE id = :id"
-        ), {"al": json.dumps(["users", "orders"]), "id": cid})
+        c.execute(
+            text(
+                "UPDATE connections SET table_allowlist = :al, "
+                "max_tables_per_tick = 7, collection_mode = 'sample' "
+                "WHERE id = :id"
+            ),
+            {"al": json.dumps(["users", "orders"]), "id": cid},
+        )
 
     resp = client.get(f"/projects/default/connections/{cid}/edit")
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
     assert "users" in body and "orders" in body
-    assert ">7<" in body or "value=\"7\"" in body
+    assert ">7<" in body or 'value="7"' in body
     assert "sample" in body
 
 
@@ -128,6 +152,7 @@ def test_edit_redirects_with_flash_when_dsn_ciphertext_unreadable(client):
     from sqlalchemy import text
 
     from app.metrics_storage import get_engine
+
     with get_engine().begin() as c:
         c.execute(
             text("UPDATE connections SET dsn_encrypted = :bad WHERE id = :id"),
@@ -135,11 +160,16 @@ def test_edit_redirects_with_flash_when_dsn_ciphertext_unreadable(client):
         )
 
     resp = client.get(
-        f"/projects/default/connections/{cid}/edit", follow_redirects=False,
+        f"/projects/default/connections/{cid}/edit",
+        follow_redirects=False,
     )
     assert resp.status_code == 302
-    assert resp.headers["Location"].rstrip("/").endswith(
-        "/projects/default/connections",
+    assert (
+        resp.headers["Location"]
+        .rstrip("/")
+        .endswith(
+            "/projects/default/connections",
+        )
     )
     # Follow the redirect and assert the flash actually rendered.
     body = client.get(
@@ -187,6 +217,7 @@ def test_post_persists_safety_fields(client):
     assert resp.status_code == 302
 
     from app.metrics_storage import get_connection
+
     row = get_connection(pid, cid)
     assert row["table_allowlist"] == json.dumps(["users", "orders"])
     assert row["table_denylist"] == json.dumps(["audit_logs"])
@@ -210,6 +241,7 @@ def test_post_empty_skip_size_clears_to_null(client):
         },
     )
     from app.metrics_storage import get_connection
+
     assert get_connection(pid, cid)["skip_tables_larger_than_gb"] is None
 
 
@@ -219,8 +251,7 @@ def test_post_rejects_sample_for_non_postgres(client, monkeypatch):
     the test doesn't need to reach a live ClickHouse instance."""
     monkeypatch.setattr(
         "app.connections.probe_connection",
-        lambda dsn, **_: {"status": "ok", "database": "x", "version": "y",
-                          "latency_ms": 0},
+        lambda dsn, **_: {"status": "ok", "database": "x", "version": "y", "latency_ms": 0},
     )
     monkeypatch.setattr(
         "collectors.per_project.add_job_for_connection",
@@ -230,8 +261,11 @@ def test_post_rejects_sample_for_non_postgres(client, monkeypatch):
     client.post(
         "/projects/default/connections/new",
         data={
-            "name": "CH", "dsn": "clickhouse+native://u:p@h:9000/d",
-            "schema_name": "default", "interval_minutes": 15, "is_active": "y",
+            "name": "CH",
+            "dsn": "clickhouse+native://u:p@h:9000/d",
+            "schema_name": "default",
+            "interval_minutes": 15,
+            "is_active": "y",
         },
     )
     pid, cid = _conn_id(client)
@@ -248,6 +282,7 @@ def test_post_rejects_sample_for_non_postgres(client, monkeypatch):
     assert resp.status_code == 200
     assert b"Postgres" in resp.data
     from app.metrics_storage import get_connection
+
     # Mode wasn't changed.
     assert get_connection(pid, cid)["collection_mode"] in (None, "full")
 
@@ -261,6 +296,7 @@ def test_token_empty_leaves_existing_alone(client):
     _add_iceberg(client)
     pid, cid = _conn_id(client)
     from app.metrics_storage import get_connection
+
     before = get_connection(pid, cid)["iceberg_auth_token_encrypted"]
     assert before is not None  # initial-token was stored
 
@@ -271,7 +307,7 @@ def test_token_empty_leaves_existing_alone(client):
             "statement_timeout_ms": 30_000,
             "collection_mode": "full",
             "iceberg_namespace": "lakehouse",
-            "iceberg_auth_token": "",   # untouched
+            "iceberg_auth_token": "",  # untouched
         },
     )
     after = get_connection(pid, cid)["iceberg_auth_token_encrypted"]
@@ -294,6 +330,7 @@ def test_token_clear_nukes_ciphertext(client):
         },
     )
     from app.metrics_storage import get_connection
+
     assert get_connection(pid, cid)["iceberg_auth_token_encrypted"] is None
 
 
@@ -314,6 +351,7 @@ def test_token_new_value_reencrypts(client):
     )
     from app import crypto
     from app.metrics_storage import get_connection
+
     ct = get_connection(pid, cid)["iceberg_auth_token_encrypted"]
     assert ct is not None
     assert crypto.decrypt_token(ct) == "rotated-secret"
@@ -336,6 +374,7 @@ def test_iceberg_fields_ignored_for_non_iceberg(client):
         },
     )
     from app.metrics_storage import get_connection
+
     row = get_connection(pid, cid)
     assert row["iceberg_namespace"] is None
     assert row["iceberg_auth_token_encrypted"] is None
@@ -366,10 +405,12 @@ def test_update_connection_safety_drops_unknown_columns(client):
     _add_pg(client)
     pid, cid = _conn_id(client)
     from app.metrics_storage import get_connection, update_connection_safety
+
     before_dsn = get_connection(pid, cid)["dsn_encrypted"]
 
     update_connection_safety(
-        project_id=pid, connection_id=cid,
+        project_id=pid,
+        connection_id=cid,
         updates={
             "dsn_encrypted": b"injected",
             "project_id": "other",
@@ -387,7 +428,12 @@ def test_update_with_no_allowed_columns_is_noop(client):
     _add_pg(client)
     pid, cid = _conn_id(client)
     from app.metrics_storage import update_connection_safety
-    assert update_connection_safety(
-        project_id=pid, connection_id=cid,
-        updates={"created_at": "evil", "name": "evil"},
-    ) is False
+
+    assert (
+        update_connection_safety(
+            project_id=pid,
+            connection_id=cid,
+            updates={"created_at": "evil", "name": "evil"},
+        )
+        is False
+    )

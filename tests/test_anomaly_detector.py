@@ -1,4 +1,5 @@
 """Tests for ml.anomaly_detector."""
+
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
@@ -10,6 +11,7 @@ from ml import anomaly_detector as ad
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _series(n: int, step_minutes: int = 15, slope: float = 10.0, base: float = 1000.0):
     """Return fake metrics rows for get_metrics mock."""
@@ -30,28 +32,33 @@ def _series_with_spike(n: int, spike_start: int, spike_end: int, spike_value: fl
     rows = []
     for i in range(n):
         v = spike_value if spike_start <= i < spike_end else 0.02
-        rows.append({
-            "ts": (t0 + timedelta(minutes=i * 15)).isoformat(timespec="seconds"),
-            "value": v,
-            "tags": None,
-        })
+        rows.append(
+            {
+                "ts": (t0 + timedelta(minutes=i * 15)).isoformat(timespec="seconds"),
+                "value": v,
+                "tags": None,
+            }
+        )
     return rows
 
 
 def _make_side_effect(rc_rows, nr_rows):
     """Return a side_effect for get_metrics that dispatches by metric_name."""
+
     def _side_effect(table, metric_name, project_id=None, window=None):
         if metric_name == "row_count":
             return rc_rows
         if metric_name == "null_rate":
             return nr_rows
         return []
+
     return _side_effect
 
 
 # ---------------------------------------------------------------------------
 # _load_features
 # ---------------------------------------------------------------------------
+
 
 def test_load_features_raises_with_single_point():
     # _load_features needs at least 2 aligned ticks to compute deltas.
@@ -69,12 +76,13 @@ def test_load_features_returns_correct_shape():
     with patch.object(ad, "get_metrics", side_effect=_make_side_effect(rc, nr)):
         timestamps, X = ad._load_features("t", window=timedelta(days=7))
     assert len(timestamps) == n - 1  # first row dropped for delta
-    assert X.shape == (n - 1, 4)     # row_count, null_rate, Δrow_count, Δnull_rate
+    assert X.shape == (n - 1, 4)  # row_count, null_rate, Δrow_count, Δnull_rate
 
 
 # ---------------------------------------------------------------------------
 # train
 # ---------------------------------------------------------------------------
+
 
 def test_train_raises_when_too_few_points_after_delta(tmp_path, monkeypatch):
     monkeypatch.setattr(ad, "MODELS_DIR", tmp_path)
@@ -111,6 +119,7 @@ def test_train_returns_metadata(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 # score_table
 # ---------------------------------------------------------------------------
+
 
 def test_score_table_returns_list_of_dicts(tmp_path, monkeypatch):
     monkeypatch.setattr(ad, "MODELS_DIR", tmp_path)
@@ -173,6 +182,7 @@ def test_score_table_trains_on_demand_if_no_model(tmp_path, monkeypatch):
 # retrain_all
 # ---------------------------------------------------------------------------
 
+
 def test_retrain_all_counts(tmp_path, monkeypatch):
     monkeypatch.setattr(ad, "MODELS_DIR", tmp_path)
     monkeypatch.setattr(ad, "MIN_POINTS", 10)
@@ -192,8 +202,10 @@ def test_retrain_all_counts(tmp_path, monkeypatch):
         rc, nr = series_map[table]
         return rc if metric == "row_count" else nr
 
-    with patch.object(ad, "get_metrics", side_effect=_get), \
-         patch("app.db.list_tables", return_value=tables):
+    with (
+        patch.object(ad, "get_metrics", side_effect=_get),
+        patch("app.db.list_tables", return_value=tables),
+    ):
         counts = ad.retrain_all()
 
     assert counts["trained"] == 2
@@ -204,6 +216,7 @@ def test_retrain_all_counts(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 # API endpoint
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def client():

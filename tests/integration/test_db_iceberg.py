@@ -50,9 +50,9 @@ TABLE = "orders"
 
 # 5 rows: 1 NULL in customer (row 3), 1 NULL in amount (row 4)
 ROWS = {
-    "id":       [1,      2,      3,     4,      5],
-    "customer": ["Alice", "Bob",  None,  "Dave", "Eve"],
-    "amount":   [100,    200,    150,   None,   300],
+    "id": [1, 2, 3, 4, 5],
+    "customer": ["Alice", "Bob", None, "Dave", "Eve"],
+    "amount": [100, 200, 150, None, 300],
 }
 
 
@@ -127,13 +127,15 @@ def iceberg_dsn(minio_container, rest_container) -> str:
     """IcebergAdapter DSN that routes S3 file I/O to the local MinIO container."""
     minio_port = minio_container.get_exposed_port(9000)
     rest_port = rest_container.get_exposed_port(8181)
-    params = urlencode({
-        "warehouse": WAREHOUSE,
-        "s3.endpoint": f"http://localhost:{minio_port}",
-        "s3.access-key-id": "minioadmin",
-        "s3.secret-access-key": "minioadmin",
-        "s3.path-style-access": "true",
-    })
+    params = urlencode(
+        {
+            "warehouse": WAREHOUSE,
+            "s3.endpoint": f"http://localhost:{minio_port}",
+            "s3.access-key-id": "minioadmin",
+            "s3.secret-access-key": "minioadmin",
+            "s3.path-style-access": "true",
+        }
+    )
     return f"iceberg+rest://localhost:{rest_port}?{params}"
 
 
@@ -201,16 +203,18 @@ def _seed(minio_container, rest_container, iceberg_dsn) -> None:
     )
 
     table = catalog.load_table((NAMESPACE, TABLE))
-    arrow_schema = pa.schema([
-        pa.field("id", pa.int64(), nullable=False),
-        pa.field("customer", pa.string(), nullable=True),
-        pa.field("amount", pa.int32(), nullable=True),
-    ])
+    arrow_schema = pa.schema(
+        [
+            pa.field("id", pa.int64(), nullable=False),
+            pa.field("customer", pa.string(), nullable=True),
+            pa.field("amount", pa.int32(), nullable=True),
+        ]
+    )
     arrow_table = pa.table(
         {
-            "id":       pa.array(ROWS["id"], type=pa.int64()),
+            "id": pa.array(ROWS["id"], type=pa.int64()),
             "customer": pa.array(ROWS["customer"], type=pa.string()),
-            "amount":   pa.array(ROWS["amount"], type=pa.int32()),
+            "amount": pa.array(ROWS["amount"], type=pa.int32()),
         },
         schema=arrow_schema,
     )
@@ -222,6 +226,7 @@ def _seed(minio_container, rest_container, iceberg_dsn) -> None:
 
 def test_list_tables_returns_fixture_table(iceberg_dsn):
     from app.db import make_adapter_for_url
+
     tables = make_adapter_for_url(iceberg_dsn).list_tables(NAMESPACE)
     names = [t["table_name"] for t in tables]
     assert TABLE in names
@@ -230,11 +235,13 @@ def test_list_tables_returns_fixture_table(iceberg_dsn):
 
 def test_list_tables_unknown_namespace_returns_empty(iceberg_dsn):
     from app.db import make_adapter_for_url
+
     assert make_adapter_for_url(iceberg_dsn).list_tables("no_such_ns") == []
 
 
 def test_table_schema_columns_and_nullability(iceberg_dsn):
     from app.db import make_adapter_for_url
+
     cols = make_adapter_for_url(iceberg_dsn).table_schema(TABLE, NAMESPACE)
     by_name = {c["name"]: c for c in cols}
     assert set(by_name) == {"id", "customer", "amount"}
@@ -245,6 +252,7 @@ def test_table_schema_columns_and_nullability(iceberg_dsn):
 
 def test_table_stats_row_count_size_and_timestamp(iceberg_dsn):
     from app.db import make_adapter_for_url
+
     stats = make_adapter_for_url(iceberg_dsn).table_stats(TABLE, NAMESPACE)
     assert stats is not None
     assert stats["row_count"] == len(ROWS["id"])
@@ -254,11 +262,13 @@ def test_table_stats_row_count_size_and_timestamp(iceberg_dsn):
 
 def test_table_stats_missing_table_returns_none(iceberg_dsn):
     from app.db import make_adapter_for_url
+
     assert make_adapter_for_url(iceberg_dsn).table_stats("missing", NAMESPACE) is None
 
 
 def test_column_nulls_counts_and_rates_from_manifest(iceberg_dsn):
     from app.db import make_adapter_for_url
+
     nulls = make_adapter_for_url(iceberg_dsn).column_nulls(TABLE, NAMESPACE)
     by_col = {c["column"]: c for c in nulls}
     # id: required — no NULLs
@@ -274,4 +284,5 @@ def test_column_nulls_counts_and_rates_from_manifest(iceberg_dsn):
 
 def test_column_distribution_returns_empty(iceberg_dsn):
     from app.db import make_adapter_for_url
+
     assert make_adapter_for_url(iceberg_dsn).column_distribution(TABLE, NAMESPACE) == []

@@ -22,6 +22,7 @@ def _fernet_key(monkeypatch):
     monkeypatch.setenv("FERNET_KEY", Fernet.generate_key().decode())
     # Reset the cached singleton so the new key takes effect.
     from app import crypto
+
     crypto.reset_for_tests()
 
 
@@ -35,13 +36,16 @@ def conn_app(tmp_path, monkeypatch):
     monkeypatch.setattr(storage, "_initialized", False)
 
     import app.db
+
     monkeypatch.setattr(app.db, "list_tables", lambda schema=None: [])
 
-    app = create_app({
-        "TESTING": True,
-        "LOGIN_DISABLED": False,
-        "WTF_CSRF_ENABLED": False,
-    })
+    app = create_app(
+        {
+            "TESTING": True,
+            "LOGIN_DISABLED": False,
+            "WTF_CSRF_ENABLED": False,
+        }
+    )
     return app
 
 
@@ -76,6 +80,7 @@ def test_decrypt_with_wrong_key_raises(monkeypatch):
 
 def test_encrypt_empty_dsn_raises():
     from app import crypto
+
     with pytest.raises(ValueError):
         crypto.encrypt_dsn("")
 
@@ -139,11 +144,17 @@ def test_dev_fallback_prefers_dotenv_over_env_local(tmp_path, monkeypatch):
 
 
 def _register(client, email="u@example.com"):
-    client.post("/auth/register", data={
-        "email": email, "password": "supersecret1", "confirm": "supersecret1",
-    })
+    client.post(
+        "/auth/register",
+        data={
+            "email": email,
+            "password": "supersecret1",
+            "confirm": "supersecret1",
+        },
+    )
     from app.metrics_storage import get_user_by_email
     from app.projects import create_default_project_for
+
     user = get_user_by_email(email)
     if user:
         create_default_project_for(user["id"])
@@ -307,6 +318,7 @@ def test_create_connection_persists_ciphertext_not_plaintext(client):
         list_connections_for_project,
         list_projects_for_user,
     )
+
     user = get_user_by_email("u@example.com")
     project = list_projects_for_user(user["id"])[0]
     conns = list_connections_for_project(project["id"])
@@ -319,9 +331,15 @@ def test_create_connection_persists_ciphertext_not_plaintext(client):
 
 
 def test_list_connections_does_not_expose_dsn(client, monkeypatch):
-    monkeypatch.setattr("app.connections.probe_connection", lambda dsn, **kw: {
-        "status": "ok", "database": "app", "version": "PG 16", "latency_ms": 1,
-    })
+    monkeypatch.setattr(
+        "app.connections.probe_connection",
+        lambda dsn, **kw: {
+            "status": "ok",
+            "database": "app",
+            "version": "PG 16",
+            "latency_ms": 1,
+        },
+    )
     _register(client)
     _add_connection(client, dsn="postgresql://admin:topsecret@db.example.com:5432/app")
 
@@ -344,25 +362,32 @@ def test_project_detail_lists_connections(client):
 
 def test_test_connection_persists_probe_result(client, monkeypatch):
     _register(client)
-    monkeypatch.setattr("app.connections.probe_connection", lambda dsn, **kwargs: {
-        "status": "ok",
-        "database": "app",
-        "version": "PostgreSQL",
-        "latency_ms": 5,
-        "tables_found": 2,
-    })
+    monkeypatch.setattr(
+        "app.connections.probe_connection",
+        lambda dsn, **kwargs: {
+            "status": "ok",
+            "database": "app",
+            "version": "PostgreSQL",
+            "latency_ms": 5,
+            "tables_found": 2,
+        },
+    )
     _add_connection(client)
     project, conn = _default_project_and_connection()
 
-    monkeypatch.setattr("app.connections.probe_connection", lambda dsn, **kwargs: {
-        "status": "error",
-        "code": "error",
-        "message": "boom postgresql://u:secret@db/app?token=abc",
-    })
+    monkeypatch.setattr(
+        "app.connections.probe_connection",
+        lambda dsn, **kwargs: {
+            "status": "error",
+            "code": "error",
+            "message": "boom postgresql://u:secret@db/app?token=abc",
+        },
+    )
     resp = client.post(f"/projects/default/connections/{conn['id']}/test")
 
     assert resp.status_code == 422
     from app.metrics_storage import get_connection
+
     stored = get_connection(project["id"], conn["id"])
     assert stored["last_probe_status"] == "error"
     assert "secret" not in stored["last_probe_error"]
@@ -375,17 +400,21 @@ def test_project_detail_shows_connection_status_checklist(client, monkeypatch):
     from datetime import UTC, datetime, timedelta
 
     _register(client)
-    monkeypatch.setattr("app.connections.probe_connection", lambda dsn, **kwargs: {
-        "status": "ok",
-        "database": "app",
-        "version": "PostgreSQL",
-        "latency_ms": 5,
-        "tables_found": 7,
-    })
+    monkeypatch.setattr(
+        "app.connections.probe_connection",
+        lambda dsn, **kwargs: {
+            "status": "ok",
+            "database": "app",
+            "version": "PostgreSQL",
+            "latency_ms": 5,
+            "tables_found": 7,
+        },
+    )
     _add_connection(client, name="Production DB")
     project, conn = _default_project_and_connection()
 
     import app.metrics_storage as storage
+
     started = datetime(2026, 6, 8, 10, 30, tzinfo=UTC)
     run_id = uuid.uuid4().hex
     storage.save_collector_run(run_id, project["id"], conn["id"], started)
@@ -417,13 +446,16 @@ def test_project_detail_shows_connection_status_checklist(client, monkeypatch):
 
 def test_project_detail_links_to_collector_run_detail(client, monkeypatch):
     _register(client)
-    monkeypatch.setattr("app.connections.probe_connection", lambda dsn, **kwargs: {
-        "status": "ok",
-        "database": "app",
-        "version": "PostgreSQL",
-        "latency_ms": 5,
-        "tables_found": 7,
-    })
+    monkeypatch.setattr(
+        "app.connections.probe_connection",
+        lambda dsn, **kwargs: {
+            "status": "ok",
+            "database": "app",
+            "version": "PostgreSQL",
+            "latency_ms": 5,
+            "tables_found": 7,
+        },
+    )
     _add_connection(client, name="Production DB")
     project, conn = _default_project_and_connection()
     run_id = _seed_run(project["id"], conn["id"], table_rows=False)
@@ -441,13 +473,16 @@ def test_project_detail_links_to_collector_run_detail(client, monkeypatch):
 
 def test_run_detail_renders_summary_rows_and_human_values(client, monkeypatch):
     _register(client)
-    monkeypatch.setattr("app.connections.probe_connection", lambda dsn, **kwargs: {
-        "status": "ok",
-        "database": "app",
-        "version": "PostgreSQL",
-        "latency_ms": 5,
-        "tables_found": 3,
-    })
+    monkeypatch.setattr(
+        "app.connections.probe_connection",
+        lambda dsn, **kwargs: {
+            "status": "ok",
+            "database": "app",
+            "version": "PostgreSQL",
+            "latency_ms": 5,
+            "tables_found": 3,
+        },
+    )
     _add_connection(client, name="Production DB")
     project, conn = _default_project_and_connection()
     run_id = _seed_run(project["id"], conn["id"])
@@ -470,18 +505,22 @@ def test_run_detail_renders_summary_rows_and_human_values(client, monkeypatch):
 
 def test_run_detail_filters_rows_and_handles_empty_filter(client, monkeypatch):
     _register(client)
-    monkeypatch.setattr("app.connections.probe_connection", lambda dsn, **kwargs: {
-        "status": "ok",
-        "database": "app",
-        "version": "PostgreSQL",
-        "latency_ms": 5,
-        "tables_found": 1,
-    })
+    monkeypatch.setattr(
+        "app.connections.probe_connection",
+        lambda dsn, **kwargs: {
+            "status": "ok",
+            "database": "app",
+            "version": "PostgreSQL",
+            "latency_ms": 5,
+            "tables_found": 1,
+        },
+    )
     _add_connection(client, name="Production DB")
     project, conn = _default_project_and_connection()
     run_id = _seed_run(project["id"], conn["id"], table_rows=False)
 
     import app.metrics_storage as storage
+
     storage.save_run_table(run_id, "orders", "failed", error_message="boom")
 
     failed = client.get(
@@ -498,18 +537,22 @@ def test_run_detail_filters_rows_and_handles_empty_filter(client, monkeypatch):
 
 def test_run_detail_404_for_foreign_connection_or_run(client, monkeypatch):
     _register(client)
-    monkeypatch.setattr("app.connections.probe_connection", lambda dsn, **kwargs: {
-        "status": "ok",
-        "database": "app",
-        "version": "PostgreSQL",
-        "latency_ms": 5,
-        "tables_found": 1,
-    })
+    monkeypatch.setattr(
+        "app.connections.probe_connection",
+        lambda dsn, **kwargs: {
+            "status": "ok",
+            "database": "app",
+            "version": "PostgreSQL",
+            "latency_ms": 5,
+            "tables_found": 1,
+        },
+    )
     _add_connection(client, name="Primary")
     _add_connection(client, name="Other")
     project, conn = _default_project_and_connection()
 
     import app.metrics_storage as storage
+
     conns = storage.list_connections_for_project(project["id"])
     other_conn = next(c for c in conns if c["id"] != conn["id"])
     run_id = _seed_run(project["id"], conn["id"], table_rows=False)
@@ -532,9 +575,7 @@ def test_run_detail_404_for_foreign_connection_or_run(client, monkeypatch):
     _logout(client)
     _login(client)
 
-    foreign_run = client.get(
-        f"/projects/default/connections/{conn['id']}/runs/{foreign_run_id}"
-    )
+    foreign_run = client.get(f"/projects/default/connections/{conn['id']}/runs/{foreign_run_id}")
 
     assert same_project_wrong_conn.status_code == 404
     assert foreign_run.status_code == 404
@@ -543,16 +584,20 @@ def test_run_detail_404_for_foreign_connection_or_run(client, monkeypatch):
 def test_run_detail_viewer_can_open(client, monkeypatch):
     _register(client, email="owner@example.com")
     _make_project(client, slug="shared-run")
-    monkeypatch.setattr("app.connections.probe_connection", lambda dsn, **kwargs: {
-        "status": "ok",
-        "database": "app",
-        "version": "PostgreSQL",
-        "latency_ms": 5,
-        "tables_found": 1,
-    })
+    monkeypatch.setattr(
+        "app.connections.probe_connection",
+        lambda dsn, **kwargs: {
+            "status": "ok",
+            "database": "app",
+            "version": "PostgreSQL",
+            "latency_ms": 5,
+            "tables_found": 1,
+        },
+    )
     _add_connection(client, slug="shared-run", name="Shared DB")
 
     import app.metrics_storage as storage
+
     owner = storage.get_user_by_email("owner@example.com")
     project = storage.get_project_by_slug(owner["id"], "shared-run")
     conn = storage.list_connections_for_project(project["id"])[0]
@@ -571,13 +616,16 @@ def test_run_detail_viewer_can_open(client, monkeypatch):
 
 def test_run_detail_running_run_and_empty_rows(client, monkeypatch):
     _register(client)
-    monkeypatch.setattr("app.connections.probe_connection", lambda dsn, **kwargs: {
-        "status": "ok",
-        "database": "app",
-        "version": "PostgreSQL",
-        "latency_ms": 5,
-        "tables_found": 1,
-    })
+    monkeypatch.setattr(
+        "app.connections.probe_connection",
+        lambda dsn, **kwargs: {
+            "status": "ok",
+            "database": "app",
+            "version": "PostgreSQL",
+            "latency_ms": 5,
+            "tables_found": 1,
+        },
+    )
     _add_connection(client, name="Running DB")
     project, conn = _default_project_and_connection()
     run_id = _seed_run(
@@ -599,18 +647,22 @@ def test_run_detail_running_run_and_empty_rows(client, monkeypatch):
 
 def test_run_detail_no_secrets_in_html(client, monkeypatch):
     _register(client)
-    monkeypatch.setattr("app.connections.probe_connection", lambda dsn, **kwargs: {
-        "status": "ok",
-        "database": "app",
-        "version": "PostgreSQL",
-        "latency_ms": 5,
-        "tables_found": 1,
-    })
+    monkeypatch.setattr(
+        "app.connections.probe_connection",
+        lambda dsn, **kwargs: {
+            "status": "ok",
+            "database": "app",
+            "version": "PostgreSQL",
+            "latency_ms": 5,
+            "tables_found": 1,
+        },
+    )
     _add_connection(client, name="Secret DB")
     project, conn = _default_project_and_connection()
     run_id = _seed_run(project["id"], conn["id"], table_rows=False)
 
     import app.metrics_storage as storage
+
     storage.save_run_table(
         run_id,
         "orders",
@@ -635,18 +687,22 @@ def test_run_detail_no_secrets_in_html(client, monkeypatch):
 
 def test_run_detail_skipped_without_reason_uses_dash(client, monkeypatch):
     _register(client)
-    monkeypatch.setattr("app.connections.probe_connection", lambda dsn, **kwargs: {
-        "status": "ok",
-        "database": "app",
-        "version": "PostgreSQL",
-        "latency_ms": 5,
-        "tables_found": 1,
-    })
+    monkeypatch.setattr(
+        "app.connections.probe_connection",
+        lambda dsn, **kwargs: {
+            "status": "ok",
+            "database": "app",
+            "version": "PostgreSQL",
+            "latency_ms": 5,
+            "tables_found": 1,
+        },
+    )
     _add_connection(client, name="Skipped DB")
     project, conn = _default_project_and_connection()
     run_id = _seed_run(project["id"], conn["id"], table_rows=False)
 
     import app.metrics_storage as storage
+
     storage.save_run_table(
         run_id,
         "orders",
@@ -663,18 +719,22 @@ def test_run_detail_skipped_without_reason_uses_dash(client, monkeypatch):
 
 def test_run_detail_shows_limited_count(client, monkeypatch):
     _register(client)
-    monkeypatch.setattr("app.connections.probe_connection", lambda dsn, **kwargs: {
-        "status": "ok",
-        "database": "app",
-        "version": "PostgreSQL",
-        "latency_ms": 5,
-        "tables_found": 101,
-    })
+    monkeypatch.setattr(
+        "app.connections.probe_connection",
+        lambda dsn, **kwargs: {
+            "status": "ok",
+            "database": "app",
+            "version": "PostgreSQL",
+            "latency_ms": 5,
+            "tables_found": 101,
+        },
+    )
     _add_connection(client, name="Large DB")
     project, conn = _default_project_and_connection()
     run_id = _seed_run(project["id"], conn["id"], table_rows=False)
 
     import app.metrics_storage as storage
+
     for i in range(101):
         storage.save_run_table(run_id, f"table_{i:03d}", "success")
 
@@ -689,25 +749,33 @@ def test_run_detail_shows_limited_count(client, monkeypatch):
 
 def test_project_detail_shows_next_scheduled_run(client, monkeypatch):
     _register(client)
-    monkeypatch.setattr("app.connections.probe_connection", lambda dsn, **kwargs: {
-        "status": "ok",
-        "database": "app",
-        "version": "PostgreSQL",
-        "latency_ms": 5,
-        "tables_found": 1,
-    })
+    monkeypatch.setattr(
+        "app.connections.probe_connection",
+        lambda dsn, **kwargs: {
+            "status": "ok",
+            "database": "app",
+            "version": "PostgreSQL",
+            "latency_ms": 5,
+            "tables_found": 1,
+        },
+    )
     _add_connection(client, name="Scheduled DB")
     project, conn = _default_project_and_connection()
 
     monkeypatch.setattr("collectors.scheduler.get_scheduler", lambda: object())
-    monkeypatch.setattr("collectors.per_project.list_jobs_for_user", lambda scheduler, user_id: [{
-        "id": f"collect:{project['id']}:{conn['id']}",
-        "name": "collect",
-        "project_id": project["id"],
-        "connection_id": conn["id"],
-        "next_run_time": "2026-06-08T12:45:00+00:00",
-        "trigger": "interval[0:15:00]",
-    }])
+    monkeypatch.setattr(
+        "collectors.per_project.list_jobs_for_user",
+        lambda scheduler, user_id: [
+            {
+                "id": f"collect:{project['id']}:{conn['id']}",
+                "name": "collect",
+                "project_id": project["id"],
+                "connection_id": conn["id"],
+                "next_run_time": "2026-06-08T12:45:00+00:00",
+                "trigger": "interval[0:15:00]",
+            }
+        ],
+    )
 
     resp = client.get("/projects/default")
     body = resp.get_data(as_text=True)
@@ -729,6 +797,7 @@ def test_toggle_flips_is_active(client):
         list_connections_for_project,
         list_projects_for_user,
     )
+
     user = get_user_by_email("u@example.com")
     project = list_projects_for_user(user["id"])[0]
     conn_id = list_connections_for_project(project["id"])[0]["id"]
@@ -757,6 +826,7 @@ def test_run_now_falls_back_to_sync_when_scheduler_absent(client, monkeypatch):
         list_connections_for_project,
         list_projects_for_user,
     )
+
     user = get_user_by_email("u@example.com")
     project = list_projects_for_user(user["id"])[0]
     conn_id = list_connections_for_project(project["id"])[0]["id"]
@@ -787,6 +857,7 @@ def test_run_now_schedules_one_shot_when_scheduler_running(client, monkeypatch):
         list_connections_for_project,
         list_projects_for_user,
     )
+
     user = get_user_by_email("u@example.com")
     project = list_projects_for_user(user["id"])[0]
     conn_id = list_connections_for_project(project["id"])[0]["id"]
@@ -831,6 +902,7 @@ def test_run_now_blocks_inactive_connection(client):
         list_connections_for_project,
         list_projects_for_user,
     )
+
     user = get_user_by_email("u@example.com")
     project = list_projects_for_user(user["id"])[0]
     conn_id = list_connections_for_project(project["id"])[0]["id"]
@@ -855,6 +927,7 @@ def test_run_now_stranger_forbidden(client):
         list_connections_for_project,
         list_projects_for_user,
     )
+
     user = get_user_by_email("owner@x.io")
     project = list_projects_for_user(user["id"])[0]
     conn_id = list_connections_for_project(project["id"])[0]["id"]
@@ -874,6 +947,7 @@ def test_delete_removes_connection(client):
         list_connections_for_project,
         list_projects_for_user,
     )
+
     user = get_user_by_email("u@example.com")
     project = list_projects_for_user(user["id"])[0]
     conn_id = list_connections_for_project(project["id"])[0]["id"]
@@ -888,10 +962,15 @@ def test_delete_removes_connection(client):
 @pytest.mark.parametrize("interval", [4, 0, -1, 1441, 9999])
 def test_interval_out_of_range_rejected(client, interval):
     _register(client)
-    resp = client.post("/projects/default/connections/new", data={
-        "name": "x", "dsn": "postgresql://u:p@h/d",
-        "schema_name": "public", "interval_minutes": interval,
-    })
+    resp = client.post(
+        "/projects/default/connections/new",
+        data={
+            "name": "x",
+            "dsn": "postgresql://u:p@h/d",
+            "schema_name": "public",
+            "interval_minutes": interval,
+        },
+    )
     # Form re-renders 200; no row created.
     assert resp.status_code == 200
     from app.metrics_storage import (
@@ -899,6 +978,7 @@ def test_interval_out_of_range_rejected(client, interval):
         list_connections_for_project,
         list_projects_for_user,
     )
+
     user = get_user_by_email("u@example.com")
     project = list_projects_for_user(user["id"])[0]
     assert list_connections_for_project(project["id"]) == []
@@ -930,6 +1010,7 @@ def test_stranger_cannot_toggle_others_connection(client):
         list_connections_for_project,
         list_projects_for_user,
     )
+
     owner = get_user_by_email("owner2@example.com")
     owner_project = list_projects_for_user(owner["id"])[0]
     owner_conn_id = list_connections_for_project(owner_project["id"])[0]["id"]
@@ -949,6 +1030,7 @@ def test_stranger_cannot_delete_others_connection(client):
         list_connections_for_project,
         list_projects_for_user,
     )
+
     owner = get_user_by_email("owner3@example.com")
     owner_project = list_projects_for_user(owner["id"])[0]
     owner_conn_id = list_connections_for_project(owner_project["id"])[0]["id"]
@@ -975,6 +1057,7 @@ def test_plaintext_dsn_does_not_appear_in_logs(client, caplog):
     """The DSNFilter from #56 + storing encrypted at rest should leave
     no place where the plaintext could leak into a log line."""
     import logging
+
     _register(client)
     with caplog.at_level(logging.DEBUG):
         _add_connection(client, dsn="postgresql://u:supersecretpw@h:5432/d")
@@ -996,12 +1079,17 @@ def test_probe_connection_iceberg_ok(monkeypatch):
     monkeypatch.setattr("app.connections.make_adapter_for_url", fake_adapter, raising=False)
 
     import app.connections as conn_mod
-    monkeypatch.setattr(conn_mod, "_probe_iceberg", lambda dsn, **_: {
-        "status": "ok",
-        "database": "iceberg",
-        "version": "2 namespace(s)",
-        "latency_ms": 10,
-    })
+
+    monkeypatch.setattr(
+        conn_mod,
+        "_probe_iceberg",
+        lambda dsn, **_: {
+            "status": "ok",
+            "database": "iceberg",
+            "version": "2 namespace(s)",
+            "latency_ms": 10,
+        },
+    )
 
     result = probe_connection("iceberg+rest://localhost:8181?warehouse=s3://bucket/wh")
     assert result["status"] == "ok"
@@ -1253,10 +1341,7 @@ def test_create_iceberg_connection_persists_namespace_and_encrypts_token(client)
     assert row["iceberg_warehouse"] == "s3://prod/wh"
     # Token is encrypted at rest and round-trips via decrypt_token.
     assert b"bearer-secret-token-xyz" not in row["iceberg_auth_token_encrypted"]
-    assert (
-        crypto.decrypt_token(row["iceberg_auth_token_encrypted"])
-        == "bearer-secret-token-xyz"
-    )
+    assert crypto.decrypt_token(row["iceberg_auth_token_encrypted"]) == "bearer-secret-token-xyz"
 
 
 def test_iceberg_fields_ignored_for_postgres_dsn(client):
@@ -1316,12 +1401,9 @@ def test_effective_namespace_falls_back_to_schema_name():
     # collectors/per_project.collect_for_connection — no DB needed.
     conn_row_legacy = {"iceberg_namespace": None, "schema_name": "default"}
     conn_row_explicit = {"iceberg_namespace": "lakehouse", "schema_name": "default"}
+    assert (conn_row_legacy.get("iceberg_namespace") or conn_row_legacy["schema_name"]) == "default"
     assert (
-        conn_row_legacy.get("iceberg_namespace") or conn_row_legacy["schema_name"]
-    ) == "default"
-    assert (
-        conn_row_explicit.get("iceberg_namespace")
-        or conn_row_explicit["schema_name"]
+        conn_row_explicit.get("iceberg_namespace") or conn_row_explicit["schema_name"]
     ) == "lakehouse"
 
 
@@ -1360,7 +1442,9 @@ def test_list_connections_with_dsn_keeps_row_when_decrypt_fails(client):
         project_id=project["id"],
         name="good",
         dsn_encrypted=crypto.encrypt_dsn("postgresql://u:p@h:5432/d"),
-        schema_name="public", interval_minutes=15, is_active=True,
+        schema_name="public",
+        interval_minutes=15,
+        is_active=True,
     )
     # Шифруем «потерянным» ключом — для рантайм-сессии ciphertext
     # станет битым (InvalidToken). Так воспроизводится ротация ключа.
@@ -1371,7 +1455,9 @@ def test_list_connections_with_dsn_keeps_row_when_decrypt_fails(client):
         project_id=project["id"],
         name="rotated-key",
         dsn_encrypted=rotated_ciphertext,
-        schema_name="public", interval_minutes=15, is_active=True,
+        schema_name="public",
+        interval_minutes=15,
+        is_active=True,
     )
 
     items = connections.list_connections_with_dsn(project["id"])
@@ -1400,9 +1486,7 @@ def test_project_detail_keeps_connection_when_decrypt_fails(client, monkeypatch)
         connection_id=uuid.uuid4().hex,
         project_id=project["id"],
         name="rotated-key",
-        dsn_encrypted=Fernet(Fernet.generate_key()).encrypt(
-            b"postgresql://u:p@h:5432/d"
-        ),
+        dsn_encrypted=Fernet(Fernet.generate_key()).encrypt(b"postgresql://u:p@h:5432/d"),
         schema_name="public",
         interval_minutes=15,
         is_active=True,
