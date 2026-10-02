@@ -22,13 +22,13 @@ from datetime import UTC, datetime, timedelta
 from app.metrics_storage import get_metrics, save_changepoints
 
 try:  # pragma: no cover - optional heavy dep
-    import numpy as np  # type: ignore
-    import ruptures as rpt  # type: ignore
+    import numpy as np
+    import ruptures as rpt
 
     _HAS_RUPTURES = True
 except Exception:  # pragma: no cover
-    np = None  # type: ignore
-    rpt = None  # type: ignore
+    np = None  # type: ignore[assignment]
+    rpt = None
     _HAS_RUPTURES = False
 
 logger = logging.getLogger(__name__)

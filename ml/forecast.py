@@ -21,19 +21,19 @@ from typing import Any
 from app.metrics_storage import get_changepoints, get_metrics
 
 try:  # pragma: no cover - optional heavy dep
-    from prophet import Prophet  # type: ignore
+    from prophet import Prophet
 
     _HAS_PROPHET = True
 except Exception:  # pragma: no cover
-    Prophet = None  # type: ignore
+    Prophet = None
     _HAS_PROPHET = False
 
 try:  # pragma: no cover - optional dep
-    import joblib  # type: ignore
+    import joblib
 
     _HAS_JOBLIB = True
 except Exception:  # pragma: no cover
-    joblib = None  # type: ignore
+    joblib = None
     _HAS_JOBLIB = False
 
 logger = logging.getLogger(__name__)
@@ -98,8 +98,8 @@ def _fit_linear(points: list[tuple[datetime, float]]) -> LinearModel:
     return LinearModel(slope=slope, intercept=intercept, sigma=sigma, t0=t0)
 
 
-def _fit_prophet(points: list[tuple[datetime, float]]):  # pragma: no cover - heavy
-    import pandas as pd  # type: ignore
+def _fit_prophet(points: list[tuple[datetime, float]]) -> Any:  # pragma: no cover - heavy
+    import pandas as pd
 
     df = pd.DataFrame(
         {"ds": [p[0].replace(tzinfo=None) for p in points], "y": [p[1] for p in points]}
@@ -166,7 +166,7 @@ def _anchor_shift(out: list[dict], last_value: float | None) -> list[dict]:
 
 
 def _predict_prophet(
-    model, horizon_days: int, last_value: float | None = None
+    model: Any, horizon_days: int, last_value: float | None = None
 ) -> list[dict]:  # pragma: no cover
     future = model.make_future_dataframe(periods=horizon_days * 24, freq="h", include_history=False)
     fc = model.predict(future)
@@ -338,7 +338,8 @@ def forecast(
         and _parse_ts(persisted["last_ts"]) >= last_ts - timedelta(hours=1)
         and persisted.get("last_changepoint_ts") == last_cp_ts
     )
-    if not fresh:
+    # The explicit None check narrows the type of `persisted` for mypy; `fresh` already implies it.
+    if persisted is None or not fresh:
         train(table, metric, project_id)
         persisted = _load_persisted(table, metric, project_id) or {
             "kind": "linear",

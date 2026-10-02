@@ -35,9 +35,9 @@ try:
 
     _HAS_SKLEARN = True
 except Exception:  # pragma: no cover
-    np = None  # type: ignore
-    IsolationForest = None  # type: ignore
-    StandardScaler = None  # type: ignore
+    np = None  # type: ignore[assignment]
+    IsolationForest = None
+    StandardScaler = None
     _HAS_SKLEARN = False
 
 try:
@@ -45,7 +45,7 @@ try:
 
     _HAS_JOBLIB = True
 except Exception:  # pragma: no cover
-    _joblib = None  # type: ignore
+    _joblib = None
     _HAS_JOBLIB = False
 
 logger = logging.getLogger(__name__)
