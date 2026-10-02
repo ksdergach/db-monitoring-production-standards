@@ -4,7 +4,7 @@ PROJECT_ID    ?= legacy
 CONNECTION_ID ?=
 DEMO_PROJECT_SLUG ?= retail-postgres
 
-.PHONY: build server reset-db reset-metrics warmup-ml db-up db-down db-reset db-logs db-psql seed test test-integration test-e2e lint lint-fix timescale-up timescale-down timescale-migrate live-demo telegram-demo iceberg-up iceberg-down smoke-iceberg iceberg-demo demo-ids clickhouse-up clickhouse-down seed-clickhouse clickhouse-demo backup restore backup-cron-up backup-cron-down demo-prepare recover-monitor-db
+.PHONY: build server reset-db reset-metrics warmup-ml db-up db-down db-reset db-logs db-psql seed test test-integration test-e2e lint lint-fix format typecheck check hooks timescale-up timescale-down timescale-migrate live-demo telegram-demo iceberg-up iceberg-down smoke-iceberg iceberg-demo demo-ids clickhouse-up clickhouse-down seed-clickhouse clickhouse-demo backup restore backup-cron-up backup-cron-down demo-prepare recover-monitor-db
 
 build:
 	docker build -t $(IMAGE) .
@@ -197,10 +197,24 @@ backup-cron-up: ## Запустить фоновый backup-сервис (cron �
 backup-cron-down: ## Остановить фоновый backup-сервис
 	docker compose --profile backup stop backup
 
-# Ruff: linter + import sort + pyupgrade in one tool. Config in pyproject.toml.
-# Runs locally via venv (fast, no docker round-trip). Same command runs in CI.
-lint:
-	ruff check .
+# ── Code quality ─────────────────────────────────────────────────────
+# Tools run through Poetry: versions come from poetry.lock and the virtualenv
+# does not need to be activated. Config in pyproject.toml and
+# .pre-commit-config.yaml. CI runs the same command as `make check`.
+lint: ## Ruff: линтер, сортировка импортов, pyupgrade
+	poetry run ruff check .
 
-lint-fix:
-	ruff check . --fix
+lint-fix: ## То же с автоисправлением
+	poetry run ruff check . --fix
+
+format: ## Отформатировать код (ruff format)
+	poetry run ruff format .
+
+typecheck: ## Проверить типы в ml/ (mypy)
+	poetry run mypy
+
+check: ## Все хуки pre-commit на всех файлах — то же, что запускает CI
+	poetry run pre-commit run --all-files
+
+hooks: ## Включить хуки перед коммитом (один раз после клонирования)
+	poetry run pre-commit install
