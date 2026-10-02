@@ -69,6 +69,7 @@ pytest = "8.3.4"
 coverage = "7.13.5"
 ruff = "0.9.4"
 mypy = "2.4.0"
+pre-commit = "4.6.2"
 # E2E dashboard tests (#45) — headless Chromium drives the live Flask app.
 # `pytest -m e2e` opts in. After install: `playwright install chromium`.
 # Kept in the dev group: the e2e test modules import playwright at module
