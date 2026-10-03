@@ -12,6 +12,10 @@ models/*
 .DS_Store
 .claude/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.idea/
+.vscode/
 .coverage
 coverage.xml
 htmlcov/
