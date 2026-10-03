@@ -2,19 +2,19 @@
 
 The connections table stores DSNs as Fernet ciphertext — even a leak of
 the metrics SQLite file shouldn't expose database credentials. The key
-itself lives in the ``FERNET_KEY`` env var, OUTSIDE the database, so
-"compromise of the DB file" and "compromise of the key" are independent
-events.
+itself lives outside the database, so "compromise of the DB file" and
+"compromise of the key" are independent events.
 
 Behavior by environment:
-- ``FERNET_KEY`` set → use it. This is the production path.
-- ``FERNET_KEY`` unset AND ``FLASK_ENV`` ≠ production → generate one,
-  write it to ``.env.local``, log a loud warning. Lets a new contributor
-  ``git clone && python -m app.app`` without a setup step.
-- ``FERNET_KEY`` unset AND production → raise ``FernetKeyMissing``.
-  We refuse to operate on encrypted-at-rest data with a randomly-generated
-  key in prod (it would be lost on every restart, making every stored DSN
-  unrecoverable).
+- ``FERNET_KEY`` set in the process environment → use it.
+- ``FERNET_KEY`` unset in the process environment but present in ``.env`` →
+  use it in both development and production.
+- ``FERNET_KEY`` absent from both the process environment and ``.env``,
+  and ``FLASK_ENV`` ≠ production → use ``.env.local`` if present; otherwise
+  generate a key, write it to ``.env.local``, and log a loud warning.
+- ``FERNET_KEY`` absent from both the process environment and ``.env``,
+  and production → raise ``FernetKeyMissing``. ``.env.local`` is never used
+  in production.
 """
 
 from __future__ import annotations
@@ -43,15 +43,20 @@ class FernetKeyMissing(RuntimeError):
 
 
 def _load_key() -> bytes:
-    """Read the key from env, or generate one in non-prod.
+    """Read the key from the environment or dotenv files.
 
-    Generated keys are persisted to ``.env.local`` so the same process
-    (and its restarts) keep decrypting what they encrypted. Without that,
-    every gunicorn worker would have its own throwaway key.
+    ``.env`` is allowed in every environment. ``.env.local`` is a development
+    fallback only. Generated development keys are persisted to ``.env.local``
+    so the same process (and its restarts) keeps decrypting what it encrypted.
     """
     raw = os.environ.get("FERNET_KEY")
     if raw:
         return raw.encode("ascii") if isinstance(raw, str) else raw
+
+    from_env_file = _load_key_from_dotenv(_ENV)
+    if from_env_file:
+        os.environ["FERNET_KEY"] = from_env_file.decode("ascii")
+        return from_env_file
 
     if is_production():
         raise FernetKeyMissing(
@@ -59,7 +64,7 @@ def _load_key() -> bytes:
             "throwaway key. See .env.example."
         )
 
-    existing = _load_key_from_dotenv(_ENV) or _load_key_from_dotenv(_ENV_LOCAL)
+    existing = _load_key_from_dotenv(_ENV_LOCAL)
     if existing:
         os.environ["FERNET_KEY"] = existing.decode("ascii")
         return existing
@@ -93,8 +98,8 @@ def _load_key() -> bytes:
 def _load_key_from_dotenv(path: Path) -> bytes | None:
     """Return the last FERNET_KEY from a dotenv file, if present.
 
-    Local CLI scripts should use the same key as docker-compose (`.env`)
-    before falling back to `.env.local`; otherwise they can re-encrypt DSNs
+    Local CLI scripts should use the same key as docker-compose (``.env``)
+    before falling back to ``.env.local``; otherwise they can re-encrypt DSNs
     with a key the app container does not know.
     """
     try:

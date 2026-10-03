@@ -67,9 +67,10 @@ def test_development_allows_dev_secret(monkeypatch):
     assert app.config["SECRET_KEY"] == "dev-secret"
 
 
-def test_production_requires_fernet_key(monkeypatch):
+def test_production_requires_fernet_key(monkeypatch, tmp_path):
     monkeypatch.setenv("FLASK_ENV", "production")
     monkeypatch.delenv("FERNET_KEY", raising=False)
+    monkeypatch.setattr(crypto, "_ENV", tmp_path / ".env")
     crypto.reset_for_tests()
 
     with pytest.raises(crypto.FernetKeyMissing):
@@ -79,6 +80,27 @@ def test_production_requires_fernet_key(monkeypatch):
                 "SECRET_KEY": "x" * 32,
             }
         )
+
+
+def test_production_accepts_fernet_key_from_dotenv(monkeypatch, tmp_path):
+    monkeypatch.setenv("FLASK_ENV", "production")
+    monkeypatch.delenv("FERNET_KEY", raising=False)
+
+    key = Fernet.generate_key().decode()
+    env_file = tmp_path / ".env"
+    env_file.write_text(f"FERNET_KEY={key}\n", encoding="utf-8")
+
+    monkeypatch.setattr(crypto, "_ENV", env_file)
+    crypto.reset_for_tests()
+
+    app = create_app(
+        {
+            "TESTING": True,
+            "SECRET_KEY": "x" * 32,
+        }
+    )
+
+    assert app.config["SECRET_KEY"] == "x" * 32
 
 
 def test_is_production_prefers_environment(monkeypatch):
