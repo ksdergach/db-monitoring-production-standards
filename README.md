@@ -88,6 +88,8 @@ poetry remove <pkg>
 - Активная conda или чужой venv: выполните `conda deactivate` или `deactivate`,
   затем `poetry env use python3.12` и `make install`. Poetry может использовать уже
   активное окружение вместо создания `.venv`.
+- Для папки с полностью кириллическим именем задайте ASCII-имя Compose-проекта:
+  `export COMPOSE_PROJECT_NAME=db-monitoring` перед Docker-командами.
 - После переименования папки проекта: `poetry env remove --all && make install`.
 - `Executable poetry not found` при коммите: добавьте Poetry в `PATH` окружения,
   из которого запускается Git (например, IDE), и перезапустите IDE.

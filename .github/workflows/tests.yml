@@ -124,6 +124,9 @@ jobs:
 
   environment:
     # Exercise onboarding and Docker from a fresh checkout with spaces/Cyrillic.
+    env:
+      # Compose requires an ASCII project name; the checkout name is Cyrillic.
+      COMPOSE_PROJECT_NAME: dbm-environment
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     defaults:
@@ -152,7 +155,12 @@ jobs:
       - name: Build and start the application
         run: |
           make server > /tmp/dbm-server.log 2>&1 &
+          server_pid=$!
           for attempt in $(seq 1 180); do
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              cat /tmp/dbm-server.log
+              exit 1
+            fi
             if curl --fail --silent http://localhost:5001/healthz; then
               exit 0
             fi
