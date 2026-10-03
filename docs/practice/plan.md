@@ -350,10 +350,10 @@
 ### 4.3 · Установка одной командой и README (S)
 
 **Что сделать**
-1. В `Makefile` добавить цели: `install` — проверяет, что Poetry установлен, затем выполняет `poetry sync --with dev` и `poetry run pre-commit install`; `test-local` — `poetry run pytest`.
-2. README, раздел «Установка»: требования (Git 2.31 или новее, Python 3.12 или 3.13, Poetry 2.x, Docker) и шаги `git clone` → `make install` → `cp .env.example .env` → `make test-local`.
+1. В `Makefile` добавить цели: `install` — проверяет, что Poetry установлен, затем выполняет `poetry sync --with dev` и `poetry run pre-commit install`; `test-local` — `poetry run pytest`. Цели, которые вызывают `pytest` и `python -m` напрямую (`test-integration`, `test-e2e`, запуск скриптов), перевести на `poetry run`: без активированного окружения они берут чужой Python.
+2. README, раздел «Установка»: требования (Git 2.31 или новее, Python 3.12 или 3.13, Poetry 2.x, Docker) и шаги `git clone` → `make install` → `cp .env.example .env` → `make test-local`. В разделе «Структура проекта» заменить `requirements.txt` файлами Poetry.
 3. README, раздел «Работа с зависимостями»: `poetry add <pkg>`, `poetry add --group dev <pkg>`, `poetry update <pkg>`, `poetry remove <pkg>`; при конфликте в `poetry.lock` — `git checkout --theirs poetry.lock && poetry lock`; вручную lock не редактируется.
-4. README, раздел «Проблемы окружения»: активная conda (см. задачу 3.2); после переименования папки проекта — `poetry env remove --all && make install`.
+4. README, раздел «Проблемы окружения»: активная conda (см. задачу 3.2); после переименования папки проекта — `poetry env remove --all && make install`; хук при коммите отвечает `Executable poetry not found` — в окружении, откуда запущен коммит (например, в IDE), нет пути к Poetry; хук падает с `unknown option 'deduplicate'` — Git старше 2.31.
 
 **Готово, когда**
 - [ ] В свежем клоне `make install && make test-local` завершается с кодом 0

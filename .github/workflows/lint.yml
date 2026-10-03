@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  ruff:
+  pre-commit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,12 +19,15 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
 
-      # Same version pinned in requirements-dev.txt — local `make lint` and CI
-      # use identical Ruff so a green local run guarantees green CI.
-      - name: Install Ruff
-        run: pip install ruff==0.9.4
+      # Keep in sync with the Poetry version in the first line of poetry.lock.
+      - name: Install Poetry
+        run: pipx install poetry==2.5.1
 
-      - name: Run Ruff
-        run: make lint
+      # Ruff, mypy and pre-commit versions come from poetry.lock — local hooks
+      # and CI use identical tools, so a green local run guarantees green CI.
+      - name: Install dependencies
+        run: poetry install --with dev
+
+      - name: Run pre-commit
+        run: poetry run pre-commit run --all-files --show-diff-on-failure
