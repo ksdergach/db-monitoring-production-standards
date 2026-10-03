@@ -1,3 +1,5 @@
+import os
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -94,3 +96,12 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def is_production() -> bool:
+    """Return True when the application is running in production mode."""
+    flask_env = os.environ.get("FLASK_ENV")
+    if flask_env is None:
+        flask_env = settings.FLASK_ENV
+
+    return (flask_env or "").strip().lower() == "production"
