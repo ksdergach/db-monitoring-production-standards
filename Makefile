@@ -1,10 +1,20 @@
+.DEFAULT_GOAL := build
+
 IMAGE         ?= db-monitoring
 PORT          ?= 5001
 PROJECT_ID    ?= legacy
 CONNECTION_ID ?=
 DEMO_PROJECT_SLUG ?= retail-postgres
 
-.PHONY: build server reset-db reset-metrics warmup-ml db-up db-down db-reset db-logs db-psql seed test test-integration test-e2e lint lint-fix format typecheck check hooks timescale-up timescale-down timescale-migrate live-demo telegram-demo iceberg-up iceberg-down smoke-iceberg iceberg-demo demo-ids clickhouse-up clickhouse-down seed-clickhouse clickhouse-demo backup restore backup-cron-up backup-cron-down demo-prepare recover-monitor-db
+.PHONY: install test-local build server reset-db reset-metrics warmup-ml db-up db-down db-reset db-logs db-psql seed test test-integration test-e2e lint lint-fix format typecheck check hooks timescale-up timescale-down timescale-migrate live-demo telegram-demo iceberg-up iceberg-down smoke-iceberg iceberg-demo demo-ids clickhouse-up clickhouse-down seed-clickhouse clickhouse-demo backup restore backup-cron-up backup-cron-down demo-prepare recover-monitor-db
+
+install: ## Создать окружение из lock-файла и включить хуки
+	@command -v poetry >/dev/null 2>&1 || { echo "Poetry не найден. Установите Poetry 2.x и добавьте его в PATH."; exit 1; }
+	poetry sync --with dev
+	poetry run pre-commit install
+
+test-local: ## Быстрые тесты в локальном окружении
+	poetry run pytest $(ARGS)
 
 build:
 	docker build -t $(IMAGE) .
@@ -49,14 +59,14 @@ seed:
 
 test:
 	docker compose run --rm --no-deps --build \
-		-v $(CURDIR)/tests:/app/tests \
+		-v "$(CURDIR)/tests:/app/tests" \
 		app pytest $(ARGS)
 
 # Integration tests (#44) — real Postgres / MySQL / ClickHouse / TimescaleDB
 # via testcontainers. Requires a running Docker daemon on the host. Run
-# locally; CI invokes the same command on push to master only.
+# locally; CI also runs them on master and on manual workflow dispatch.
 test-integration:
-	pytest -m integration -v $(ARGS)
+	poetry run pytest -m integration -v $(ARGS)
 
 # Live demo pipeline (#75/#138) — stream synthetic events into the target Postgres
 # and run collector + ML on every tick so the dashboard updates in real time.
@@ -65,19 +75,19 @@ test-integration:
 # For project-scoped demo: make live-demo PROJECT_ID=<id> CONNECTION_ID=<id>
 # Get IDs via: make demo-ids
 live-demo:
-	python -m scripts.live_demo \
+	poetry run python -m scripts.live_demo \
 		--project-id $(PROJECT_ID) \
 		$(if $(CONNECTION_ID),--connection-id $(CONNECTION_ID),) \
 		$(ARGS)
 
 telegram-demo: ## Demo 3.2 Telegram path (#182): make telegram-demo ARGS=all
-	python -m scripts.telegram_demo $(ARGS)
+	poetry run python -m scripts.telegram_demo $(ARGS)
 
 # Demo 3.2 — backfill 14-day history + ML warmup для demo-проектов (#176).
 # Один проход: seed_demo_workspace → seed_metrics_db → warmup_ml → verify.
 # По умолчанию готовит retail-postgres; --slug для других.
 demo-prepare:
-	python -m scripts.demo_prepare $(ARGS)
+	poetry run python -m scripts.demo_prepare $(ARGS)
 
 # Print PROJECT_ID and CONNECTION_ID for the demo account (demo@dbmonitor.app).
 demo-ids:
@@ -95,9 +105,9 @@ print(f'CONNECTION_ID={conns[0][\"id\"]}') \
 "
 
 # E2E dashboard tests (#45) — Playwright + headless Chromium against the live
-# Flask app. One-time setup: `playwright install chromium`.
+# Flask app. One-time setup: `poetry run playwright install chromium`.
 test-e2e:
-	pytest -m e2e -v $(ARGS)
+	poetry run pytest -m e2e -v $(ARGS)
 
 # ── TimescaleDB metrics store (#40 + #212) ──────────────────────────
 # Сервис теперь в дефолтном compose stack (не за профилем) — стартует
@@ -114,7 +124,7 @@ timescale-down:
 	docker compose stop timescaledb
 
 timescale-migrate:
-	python -m scripts.migrate_metrics_to_timescale \
+	poetry run python -m scripts.migrate_metrics_to_timescale \
 		--source sqlite:///monitor.db \
 		--target postgresql://postgres:dev@localhost:5433/metrics $(ARGS)
 
@@ -138,7 +148,7 @@ iceberg-down:
 smoke-iceberg: ## Run live smoke test against local Iceberg REST + MinIO (requires make iceberg-up)
 	@curl -sf http://localhost:8181/v1/config >/dev/null 2>&1 || \
 		(echo "Iceberg REST не запущен. Сначала выполни: make iceberg-up" && exit 1)
-	python -m scripts.smoke_iceberg
+	poetry run python -m scripts.smoke_iceberg
 
 iceberg-demo: ## Prepare full Iceberg Lakehouse demo path (#178)
 	@curl -sf http://localhost:8181/v1/config >/dev/null 2>&1 || \
@@ -147,7 +157,7 @@ iceberg-demo: ## Prepare full Iceberg Lakehouse demo path (#178)
 		echo "Stopping app scheduler while Iceberg demo history is prepared..."; \
 		docker compose stop app >/dev/null; \
 		trap 'echo "Starting app with refreshed scheduler..."; docker compose up -d --build app >/dev/null' EXIT; \
-		python -m scripts.prepare_iceberg_demo; \
+		poetry run python -m scripts.prepare_iceberg_demo; \
 		echo "Iceberg demo is ready: http://localhost:5001/dashboard/"
 
 # ── ClickHouse demo target (#141) ────────────────────────────────────
@@ -165,7 +175,7 @@ clickhouse-down:
 seed-clickhouse: ## Заполнить ClickHouse-демо тестовыми данными
 	@curl -sf http://localhost:8123/ping >/dev/null 2>&1 || \
 		(echo "ClickHouse не запущен. Сначала выполни: make clickhouse-up" && exit 1)
-	python -m scripts.seed_clickhouse $(ARGS)
+	poetry run python -m scripts.seed_clickhouse $(ARGS)
 
 clickhouse-demo: ## Prepare full ClickHouse demo path (#177): workspace + seed + history + warmup
 	@curl -sf http://localhost:8123/ping >/dev/null 2>&1 || \
@@ -176,12 +186,12 @@ clickhouse-demo: ## Prepare full ClickHouse demo path (#177): workspace + seed +
 		echo "Stopping app scheduler while ClickHouse demo history is prepared..."; \
 		docker compose stop app 2>/dev/null || true; \
 		trap 'echo "Starting app with refreshed scheduler..."; docker compose up -d --build app 2>/dev/null || true' EXIT; \
-		python -m scripts.prepare_clickhouse_demo $(ARGS); \
+		poetry run python -m scripts.prepare_clickhouse_demo $(ARGS); \
 		echo "ClickHouse demo is ready: http://localhost:5001/dashboard/"
 
 # ── Monitor.db recovery (#213) ───────────────────────────────────────
 recover-monitor-db: ## Восстановить после corrupted SQLite metrics store
-	python -m scripts.recover_monitor_db $(ARGS)
+	poetry run python -m scripts.recover_monitor_db $(ARGS)
 
 # ── Backup / restore (#106) ──────────────────────────────────────────
 backup: ## Снять бэкап target + monitor DB в ./backups
