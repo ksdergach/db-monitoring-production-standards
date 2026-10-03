@@ -504,6 +504,7 @@ DATABASE_URL=postgresql://postgres.<project>:<PASSWORD>@aws-0-<region>.pooler.su
 | `MONITOR_DB_URL`     | —            | `sqlite:///monitor.db`    | DSN хранилища метрик (SQLite или Postgres/Timescale — см. [Хранилище метрик](#хранилище-метрик)) |
 | `MONITORED_SCHEMA`   | —            | `public`                  | Схема Postgres / БД для MySQL/CH              |
 | `SECRET_KEY`         | ✅           | —                         | Секрет для Flask-сессий/CSRF                  |
+| `FERNET_KEY`         | ✅ production | —                         | Ключ Fernet для шифрования DSN                |
 | `COLLECT_INTERVAL_MINUTES` | —      | `15`                      | Интервал коллектора метрик                    |
 | `LOG_LEVEL`          | —            | `INFO`                    | Уровень логирования                           |
 | `LOG_FORMAT`         | —            | `text`                    | `text` (dev) или `json` (Loki/ELK/Datadog) — см. [Логи](#логи) |
@@ -513,6 +514,27 @@ DATABASE_URL=postgresql://postgres.<project>:<PASSWORD>@aws-0-<region>.pooler.su
 | `FLASK_DEBUG`        | —            | `1` (Docker — `0`)        | Включает дебаг и автоперезапуск Flask         |
 
 > ⚠️ Файл `.env` содержит секреты — не коммитить в git.
+
+### Секреты для production
+
+В режиме `production` приложение проверяет секреты при запуске:
+
+- `SECRET_KEY` должен содержать не менее 32 символов и не должен быть равен `dev-secret` или `change-me-to-something-random`;
+- `FERNET_KEY` должен быть задан явно и содержать корректный ключ Fernet.
+
+Сгенерировать `SECRET_KEY`:
+
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Сгенерировать `FERNET_KEY`:
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Сгенерированные значения сохраните в `.env` или передайте через переменные окружения. Не добавляйте реальные секреты в git.
 
 ---
 
