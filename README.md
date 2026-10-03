@@ -48,7 +48,7 @@ pinned: false
 
 - Git 2.31 или новее.
 - Poetry 2.x (в CI и Docker — 2.5.1).
-- Make.
+- Make и утилита `sqlite3` (для скриптов бэкапа и локальных тестов; в Docker устанавливается при сборке).
 - Python 3.12 или 3.13. В `.python-version` выбрана версия 3.12 для локальной разработки.
 - DSN мониторируемой БД в `DATABASE_URL` — поддерживаются PostgreSQL / MySQL / ClickHouse (см. [Поддерживаемые СУБД](#поддерживаемые-субд))
 - Docker — для команд `make build` / `make server` / `make reset-db`

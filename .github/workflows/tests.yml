@@ -174,7 +174,7 @@ jobs:
 
       - name: Record image size
         run: |
-          docker image inspect db-monitoring --format 'Image: {{.Os}}/{{.Architecture}}, {{.Size}} bytes' >> "$GITHUB_STEP_SUMMARY"
+          docker image inspect db-monitoring --format 'Image: {{.Os}}/{{.Architecture}}, {{.Size}} bytes' | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Show container logs
         if: failure()

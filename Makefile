@@ -60,6 +60,7 @@ seed:
 test:
 	docker compose run --rm --no-deps --build \
 		-v "$(CURDIR)/tests:/app/tests" \
+		-v "$(CURDIR)/docs:/app/docs:ro" \
 		app pytest $(ARGS)
 
 # Integration tests (#44) — real Postgres / MySQL / ClickHouse / TimescaleDB

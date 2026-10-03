@@ -15,6 +15,11 @@ ENV PYTHONUNBUFFERED=1 \
     FLASK_DEBUG=0 \
     APP_VERSION=${APP_VERSION}
 
+# SQLite CLI is used by backup/restore scripts and their container tests.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends sqlite3 \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN useradd -m -u 1000 user
 WORKDIR /app
 RUN chown user:user /app
