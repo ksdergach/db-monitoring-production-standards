@@ -46,6 +46,9 @@ pinned: false
 
 ## Требования
 
+- Git 2.31 или новее.
+- Poetry 2.x (в CI и Docker — 2.5.1).
+- Make и утилита `sqlite3` (для скриптов бэкапа и локальных тестов; в Docker устанавливается при сборке).
 - Python 3.12 или 3.13. В `.python-version` выбрана версия 3.12 для локальной разработки.
 - DSN мониторируемой БД в `DATABASE_URL` — поддерживаются PostgreSQL / MySQL / ClickHouse (см. [Поддерживаемые СУБД](#поддерживаемые-субд))
 - Docker — для команд `make build` / `make server` / `make reset-db`
@@ -55,26 +58,42 @@ pinned: false
 ## Установка
 
 ```bash
-# 1. Клонировать репозиторий
-git clone https://github.com/aleksandr-novikov/db-monitoring.git
-cd db-monitoring
-
-# 2. Создать виртуальное окружение
-python3 -m venv venv
-
-# 3. Активировать окружение
-source venv/bin/activate        # macOS / Linux
-# venv\Scripts\activate         # Windows
-
-# 4. Обновить pip и установить зависимости
-pip install -U pip
-pip install -r requirements.txt
-
-# 5. Настроить переменные окружения
+git clone https://github.com/ksdergach/db-monitoring-production-standards.git
+cd db-monitoring-production-standards
+make install
 cp .env.example .env
-# По умолчанию .env.example указывает на локальный Postgres (см. ниже).
-# Для подключения к Supabase раскомментируй соответствующую строку и заполни пароль (у тимлида).
+make test-local
 ```
+
+`make install` создаёт `.venv` в папке проекта из `poetry.lock` и устанавливает
+хуки pre-commit. Активировать окружение не нужно: локальные команды `make`
+используют `poetry run`. `.venv` не коммитится в Git.
+
+## Работа с зависимостями
+
+```bash
+poetry add <pkg>
+poetry add --group dev <pkg>
+poetry update <pkg>
+poetry remove <pkg>
+```
+
+Коммитьте `pyproject.toml` и `poetry.lock` вместе. Lock-файл вручную не редактируется.
+При конфликте во время merge: `git checkout --theirs poetry.lock && poetry lock`,
+затем проверьте согласованный `pyproject.toml` и выполните `make install`.
+При rebase значения ours/theirs меняются местами — выбирайте нужную сторону осознанно.
+
+## Проблемы окружения
+
+- Активная conda или чужой venv: выполните `conda deactivate` или `deactivate`,
+  затем `poetry env use python3.12` и `make install`. Poetry может использовать уже
+  активное окружение вместо создания `.venv`.
+- Для папки с полностью кириллическим именем задайте ASCII-имя Compose-проекта:
+  `export COMPOSE_PROJECT_NAME=db-monitoring` перед Docker-командами.
+- После переименования папки проекта: `poetry env remove --all && make install`.
+- `Executable poetry not found` при коммите: добавьте Poetry в `PATH` окружения,
+  из которого запускается Git (например, IDE), и перезапустите IDE.
+- `unknown option 'deduplicate'` в хуке: обновите Git до версии 2.31 или новее.
 
 Основной стек: Flask, SQLAlchemy, APScheduler, Plotly, Prophet, ruptures, joblib.
 
@@ -132,7 +151,7 @@ make reset-db   # TRUNCATE + reseed target Postgres → live collector → chang
 ### Без Docker
 
 ```bash
-python -m app.app
+poetry run python -m app.app
 ```
 
 **Проверка:**
@@ -151,10 +170,10 @@ curl http://localhost:5001/healthz
 
 ```bash
 # разовые прогоны без шедулера
-python -c "from collectors.scheduler import collect_all_tables; collect_all_tables()"
-python -c "from ml.forecast import retrain_all; retrain_all()"
-python -c "from ml.changepoint import detect_all; detect_all()"
-python -c "from collectors.schema_collector import collect_all_schemas; collect_all_schemas()"
+poetry run python -c "from collectors.scheduler import collect_all_tables; collect_all_tables()"
+poetry run python -c "from ml.forecast import retrain_all; retrain_all()"
+poetry run python -c "from ml.changepoint import detect_all; detect_all()"
+poetry run python -c "from collectors.schema_collector import collect_all_schemas; collect_all_schemas()"
 
 # принудительный запуск через admin API
 curl http://localhost:5001/admin/jobs
@@ -189,8 +208,8 @@ make reset-db
 ### Сидер вручную
 
 ```bash
-python -m scripts.seed_target_db --reset                 # очистить и пересидировать
-python -m scripts.seed_target_db --users 50000 --products 1000 \
+poetry run python -m scripts.seed_target_db --reset                 # очистить и пересидировать
+poetry run python -m scripts.seed_target_db --users 50000 --products 1000 \
     --orders 100000 --events 200000 --reset              # полный demo-датасет
 ```
 
@@ -206,7 +225,7 @@ make live-demo ARGS="--ticks 20 --interval 5"
 make live-demo ARGS="--ticks 20 --interval 5 --incident-at 8 --changepoints"
 
 # Бесконечно (Ctrl-C для остановки)
-python -m scripts.live_demo --interval 10
+poetry run python -m scripts.live_demo --interval 10
 ```
 
 Требования: target Postgres поднят (`make db-up`), приложение запущено (`make server`), в `users` есть хотя бы одна запись (`make seed` или ручной `seed_target_db`).
@@ -278,7 +297,7 @@ python -m scripts.live_demo --interval 10
 Юнит-тесты (быстрые, моки/SQLite) — каждый PR:
 
 ```bash
-pytest                 # все, кроме integration (~5 c)
+make test-local        # все, кроме integration и e2e
 ```
 
 Интеграционные тесты (#44) поднимают реальные Postgres / MySQL / ClickHouse / TimescaleDB через [testcontainers-python](https://testcontainers-python.readthedocs.io/) — нужен запущенный Docker-демон. Покрывают:
@@ -290,11 +309,13 @@ pytest                 # все, кроме integration (~5 c)
 Запуск локально:
 
 ```bash
-make test-integration              # = pytest -m integration -v
-# или: pytest -m integration tests/integration/test_db_postgres.py -v
+# Один раз установить дополнительную группу:
+poetry sync --with dev,integration
+make test-integration              # = poetry run pytest -m integration -v
+# или: poetry run pytest -m integration tests/integration/test_db_postgres.py -v
 ```
 
-В CI отдельный job `integration` запускается **только** на push в `master` (на PR не запускается — медленно, ~3–5 мин).
+В CI отдельный job `integration` запускается на push в `master` и вручную через Actions → tests → Run workflow с выбором ветки PR. Автоматически на PR он не запускается.
 
 ### E2E дашборда (Playwright)
 
@@ -310,9 +331,9 @@ make test-integration              # = pytest -m integration -v
 Setup (один раз — выкачивает Chromium ~80 МБ):
 
 ```bash
-pip install -r requirements-dev.txt
-playwright install chromium
-# В CI на Ubuntu используем `playwright install --with-deps chromium` —
+make install
+poetry run playwright install chromium
+# В CI на Ubuntu используем `poetry run playwright install --with-deps chromium` —
 # подтягивает системные libnss3/libasound2/etc. На macOS dev-машине
 # эти библиотеки уже есть.
 ```
@@ -320,10 +341,14 @@ playwright install chromium
 Запуск:
 
 ```bash
-make test-e2e                      # = pytest -m e2e -v
+make test-e2e                      # = poetry run pytest -m e2e -v
 ```
 
-В CI отдельный job `e2e` запускается **только** на push в `master`. Скриншоты упавших тестов прикладываются как артефакт `e2e-screenshots`.
+В CI отдельный job `e2e` запускается на push в `master` и вручную через Actions → tests → Run workflow с выбором ветки PR. Скриншоты упавших тестов прикладываются как артефакт `e2e-screenshots`.
+
+При ручном запуске также выполняется `environment`: установка и локальные тесты
+в свежем клоне с пробелами и кириллицей в пути, запуск Docker, проверка `/healthz`
+и `make test`. Размер образа записывается в сводку задания.
 
 ---
 
@@ -695,7 +720,7 @@ scrape_configs:
 без ingest-side регулярок.
 
 ```bash
-LOG_FORMAT=json python -m app.app | jq .
+LOG_FORMAT=json poetry run python -m app.app | jq .
 ```
 
 Обязательные поля в JSON-режиме: `timestamp` (ISO 8601 с миллисекундами,
@@ -752,7 +777,9 @@ db-monitoring/
 ├── monitor.db              # SQLite метрик (gitignored)
 ├── Dockerfile
 ├── Makefile
-├── requirements.txt
+├── pyproject.toml          # зависимости и настройки инструментов
+├── poetry.lock             # точные версии пакетов
+├── poetry.toml             # .venv внутри проекта
 └── .env / .env.example
 ```
 
