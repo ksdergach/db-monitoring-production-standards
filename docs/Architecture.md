@@ -589,7 +589,9 @@ models/<table>__anomaly.joblib   models/<table>__row_count.joblib
 | Forecast row_count | `models/<table>__row_count.joblib` |
 | Forecast size_bytes | `models/<table>__size_bytes.joblib` |
 
-Спецсимволы в имени таблицы (`/`, пробел) заменяются на `_`.
+Символ `/` в имени таблицы заменяется на `_`; в именах моделей аномалий на `_` заменяется и пробел. Для моделей отдельного проекта к имени добавляется префикс `<project_id>__`.
+
+Пути к файлам строит одна функция — `ml.common.model_path`, каталог задаёт `ml.common.MODELS_DIR` (см. [7.4](#74-конфигурация-ml-моделей)).
 
 ---
 
@@ -1310,7 +1312,7 @@ CREATE TABLE anomaly_scores (
 | **ML — прогноз**     | prophet                         | 1.3.0        | Time-series forecasting с сезонностью               |
 | **ML — changepoint** | ruptures                        | 1.1.9        | PELT-алгоритм поиска точек изменения                |
 | **Персистенция ML**  | joblib                          | 1.5.3        | Сериализация/десериализация обученных моделей       |
-| **Числа / матрицы**  | NumPy (через scikit-learn)      | транзитивно  | Матричные операции в детекторе аномалий             |
+| **Числа / матрицы**  | NumPy                           | 2.5.3        | Матричные операции в детекторе аномалий             |
 | **Валидация конфига** | pydantic / pydantic-settings   | 2.13.2       | Типобезопасные настройки из `.env`                  |
 | **Коннектор PG**     | psycopg2-binary                 | 2.9.11       | Подключение к PostgreSQL / Supabase                 |
 | **Коннектор MySQL**  | PyMySQL                         | 1.1.1        | Подключение к MySQL                                 |
@@ -1321,6 +1323,8 @@ CREATE TABLE anomaly_scores (
 | **Инфраструктура**   | Docker                          | —            | Изоляция окружения, воспроизводимость               |
 | **Целевая БД**       | Supabase (PostgreSQL 15)        | —            | Мониторируемая база данных (demo)                   |
 | **Монитор БД**       | SQLite                          | встроен      | Хранение метрик, changepoints, аномалий             |
+
+Зависимостями управляет Poetry. Прямые зависимости и их группы описаны в `pyproject.toml`, точные версии всех пакетов, включая вложенные, зафиксированы в `poetry.lock`. Разработчик, CI и Docker ставят окружение из одного lock-файла.
 
 ---
 
@@ -1362,7 +1366,7 @@ scikit-learn предоставляет `IsolationForest` и `StandardScaler` с
 
 ## 6.3 Требования к версии Python
 
-Минимальная поддерживаемая версия: **Python 3.10** — из-за синтаксиса union-типов (`str | None`) в аннотациях. Docker-образ фиксирует `python:3.12-slim` для воспроизводимости сборки.
+Поддерживаемые версии: **Python 3.12 и 3.13** (`requires-python = ">=3.12,<3.14"` в `pyproject.toml`). Нижнюю границу задают зависимости: версии `numpy` и `scipy` из `poetry.lock` требуют Python 3.12. Docker-образ фиксирует `python:3.12-slim` для воспроизводимости сборки, версию для локальной работы выбирает файл `.python-version`.
 
 Все ML-модули содержат `from __future__ import annotations` для корректной работы форвардных ссылок в аннотациях типов.
 
@@ -1377,7 +1381,9 @@ scikit-learn предоставляет `IsolationForest` и `StandardScaler` с
 | pytest     | 8.3.4  | Unit + integration тесты |
 | coverage   | 7.13.5 | Измерение покрытия кода  |
 
-Тесты расположены в `tests/`. Запуск: `pytest -v`. Все 13 тестов для аномального детектора проходят с нуля (Sprint 2). Интеграционные тесты используют реальную БД (`monitor.db` в памяти через `sqlite:///:memory:`), не моки — по решению команды (опыт Sprint 1: моки пропустили ошибку миграции).
+Результаты моделей зафиксированы эталонными тестами в `tests/ml_golden/`. В CI покрытие `ml/` проверяется с порогом 80 %.
+
+Тесты расположены в `tests/`. Запуск: `make test-local` или `poetry run pytest -v`. Все 13 тестов для аномального детектора проходят с нуля (Sprint 2). Интеграционные тесты используют реальную БД (`monitor.db` в памяти через `sqlite:///:memory:`), не моки — по решению команды (опыт Sprint 1: моки пропустили ошибку миграции).
 
 ---
 
@@ -1392,7 +1398,8 @@ scikit-learn предоставляет `IsolationForest` и `StandardScaler` с
 | `DATABASE_URL` | **да** | — | DSN мониторируемой БД. Формат: `postgresql+psycopg2://user:pass@host:5432/db` / `mysql+pymysql://...` / `clickhouse+native://...` |
 | `MONITOR_DB_URL` | нет | `sqlite:///monitor.db` | DSN хранилища метрик. В production можно заменить на PostgreSQL без изменения кода. |
 | `MONITORED_SCHEMA` | нет | `public` | Схема PostgreSQL, в которой ищутся таблицы для мониторинга. |
-| `SECRET_KEY` | нет | `dev-secret` | Секрет для Flask-сессий. **Обязательно переопределить в production.** |
+| `SECRET_KEY` | в production | `dev-secret` | Секрет для Flask-сессий и CSRF. В режиме production проверяется при запуске: не короче 32 символов и не значение по умолчанию. |
+| `FERNET_KEY` | в production | — | Ключ шифрования DSN подключений. В production должен быть задан явно; в режиме разработки создаётся автоматически и записывается в `.env.local`. |
 | `COLLECT_INTERVAL_MINUTES` | нет | `15` | Интервал сбора метрик в минутах (APScheduler). |
 | `LOG_LEVEL` | нет | `INFO` | Уровень логирования: `DEBUG`, `INFO`, `WARNING`, `ERROR`. |
 | `FLASK_ENV` | нет | `development` | Режим Flask. В production установить `production`. |
@@ -1406,10 +1413,15 @@ DATABASE_URL=postgresql+psycopg2://postgres:password@db.supabase.co:5432/postgre
 # Опционально (переопределяются при необходимости)
 MONITOR_DB_URL=sqlite:///monitor.db
 MONITORED_SCHEMA=public
-SECRET_KEY=change-me-in-production
 COLLECT_INTERVAL_MINUTES=15
 LOG_LEVEL=INFO
 FLASK_ENV=production
+
+# Секреты: в режиме production проверяются при запуске
+# python -c "import secrets; print(secrets.token_hex(32))"
+SECRET_KEY=<64 шестнадцатеричных символа>
+# python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+FERNET_KEY=<ключ Fernet>
 ```
 
 ## 7.3 Docker-запуск
@@ -1426,3 +1438,27 @@ docker run --rm \
 ```
 
 Два volume mount обязательны: `monitor.db` сохраняет исторические метрики, `models/` — обученные ML-модели. Без них данные теряются при перезапуске контейнера.
+
+## 7.4 Конфигурация ML-моделей
+
+Параметры моделей описаны классом `MLSettings` в `ml/settings.py` (`pydantic-settings`). Значения читаются из переменных окружения с префиксом `ML_` или из файла `.env`. Полный список со значениями по умолчанию есть в `.env.example`. Экземпляр `ml_settings` импортируется при запуске приложения, поэтому недопустимое значение останавливает запуск с сообщением об ошибке.
+
+| Группа | Переменные | Значения по умолчанию |
+|---|---|---|
+| Аномалии (IsolationForest) | `ML_ANOMALY_N_ESTIMATORS`, `ML_ANOMALY_CONTAMINATION`, `ML_ANOMALY_RANDOM_STATE`, `ML_ANOMALY_MIN_POINTS`, `ML_ANOMALY_TRAIN_WINDOW_DAYS` | `100`, `0.01`, `42`, `200`, `60` |
+| Прогноз (Prophet и линейная модель) | `ML_FORECAST_INTERVAL_WIDTH`, `ML_FORECAST_WEEKLY_SEASONALITY`, `ML_FORECAST_DAILY_SEASONALITY`, `ML_FORECAST_MIN_PROPHET_DAYS`, `ML_FORECAST_SEVERE_DROP_RATIO` | `0.95`, `true`, `false`, `7`, `0.2` |
+| Точки смены режима (PELT) | `ML_CHANGEPOINT_PELT_PENALTY`, `ML_CHANGEPOINT_MIN_SCORE`, `ML_CHANGEPOINT_MIN_RELATIVE_SHIFT`, `ML_CHANGEPOINT_WINDOW_DAYS` | `6.0`, `1.5`, `0.15`, `14` |
+| Дрейф данных (PSI, KS) | `ML_DRIFT_PSI_WARN`, `ML_DRIFT_PSI_CRITICAL`, `ML_DRIFT_KS_PVALUE`, `ML_DRIFT_BASELINE_DAYS` | `0.2`, `0.25`, `0.05`, `7` |
+
+Проверки значений: `ML_ANOMALY_CONTAMINATION` — больше 0 и не больше 0.5; `ML_FORECAST_INTERVAL_WIDTH` — строго между 0 и 1; `ML_DRIFT_PSI_WARN` должно быть меньше `ML_DRIFT_PSI_CRITICAL`.
+
+Сохранённые модели обучены с прежними значениями. Новое значение параметра обучения, например `ML_ANOMALY_CONTAMINATION`, начинает действовать после переобучения модели.
+
+Общие для ML-модулей определения собраны в `ml/common.py`:
+
+| Определение | Назначение |
+|---|---|
+| `parse_ts` | разбор меток времени в формате ISO; значения без часового пояса считаются UTC |
+| `InsufficientDataError` | ошибка «недостаточно истории, чтобы обучить или применить модель» |
+| `MODELS_DIR` | каталог сохранённых моделей (`models/`) |
+| `model_path` | путь к файлу модели по типу, таблице, проекту и метрике |
