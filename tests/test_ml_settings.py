@@ -69,7 +69,7 @@ def test_equal_psi_thresholds_are_invalid():
 
 
 def test_all_ml_variables_are_documented_in_env_example():
-    env_example = Path(".env.example").read_text(encoding="utf-8")
+    env_example = (Path(__file__).resolve().parents[1] / ".env.example").read_text(encoding="utf-8")
 
     for name in ML_ENV_VARS:
         assert f"# {name}=" in env_example
