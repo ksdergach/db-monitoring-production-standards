@@ -53,7 +53,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
 postgresql://monitor_ro:<YOUR_PASSWORD>@db.example.com:5432/app
 ```
 
-### Network requirements
+### Network prerequisites
 
 - Порт **5432** (по умолчанию) должен быть доступен из контейнера или окружения, где запущен DB Monitor.
 - Firewall / security group должен разрешать входящие соединения от DB Monitor.
@@ -144,7 +144,7 @@ GRANT SELECT ON analytics.* TO monitor_ro;
 
 Для мониторинга нескольких баз повторите последний `GRANT` для каждой.
 
-### Network requirements
+### Network prerequisites
 
 - Порт **9000** (нативный протокол) или **8123** (HTTP) должен быть доступен из окружения DB Monitor.
 - Firewall должен разрешать входящие соединения от DB Monitor.

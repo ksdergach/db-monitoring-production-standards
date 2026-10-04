@@ -21,3 +21,8 @@ tests/
 README.md
 Dockerfile
 .dockerignore
+.env.local
+env.txt
+.mcp.json
+backups/
+monitor.db.*
