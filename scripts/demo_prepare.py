@@ -29,11 +29,11 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from pathlib import Path
 
 from sqlalchemy import text
 
 from app.metrics_storage import get_engine
+from ml import common
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,6 @@ logger = logging.getLogger(__name__)
 # выполнить весь acceptance из #176; CH/Iceberg — bonus, делается через
 # реальные тики коллектора после `make seed-clickhouse` etc.
 DEFAULT_SLUGS = ("retail-postgres",)
-MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
 
 
 def _resolve_project_ids(slugs: tuple[str, ...]) -> dict[str, str]:
@@ -98,10 +97,12 @@ def verify_project(project_id: str) -> dict:
     # ML модели лежат плоско в models/ с именами вида
     # ``<safe_project_id>__<table>__<metric>.joblib`` (forecast) и
     # ``<safe_project_id>__<table>__anomaly.joblib`` (IsolationForest) —
-    # см. ml/forecast.py::_model_path и ml/anomaly_detector.py::_model_path.
+    # см. ml/common.py::model_path.
     safe = project_id.replace("/", "_").replace(" ", "_")
     forecast_models = (
-        sum(1 for _ in MODELS_DIR.glob(f"{safe}__*.joblib")) if MODELS_DIR.exists() else 0
+        sum(1 for _ in common.MODELS_DIR.glob(f"{safe}__*.joblib"))
+        if common.MODELS_DIR.exists()
+        else 0
     )
     return {
         "metrics": metrics,

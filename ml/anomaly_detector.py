@@ -23,10 +23,11 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 from app.metrics_storage import get_metrics
+from ml import common
+from ml.common import InsufficientDataError as InsufficientDataError
 
 try:
     import numpy as np
@@ -50,20 +51,8 @@ except Exception:  # pragma: no cover
 
 logger = logging.getLogger(__name__)
 
-MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
 MIN_POINTS = 200
 TRAIN_WINDOW_DAYS = 60
-
-
-class InsufficientDataError(Exception):
-    """Raised when there is not enough history to train the model."""
-
-
-def _parse_ts(value: str | datetime) -> datetime:
-    if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=UTC)
-    dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
 
 
 FEATURE_NAMES = ("row_count", "null_rate", "d_row_count", "d_null_rate")
@@ -101,21 +90,13 @@ def _load_features(
     # Compute deltas (drops first element).
     d_rc = [rc_vals[i] - rc_vals[i - 1] for i in range(1, len(rc_vals))]
     d_nr = [nr_vals[i] - nr_vals[i - 1] for i in range(1, len(nr_vals))]
-    timestamps = [_parse_ts(ts) for ts in common_ts[1:]]
+    timestamps = [common.parse_ts(ts) for ts in common_ts[1:]]
 
     X = np.array(
         [[rc_vals[i + 1], nr_vals[i + 1], d_rc[i], d_nr[i]] for i in range(len(d_rc))],
         dtype=float,
     )
     return timestamps, X
-
-
-def _model_path(table: str, project_id: str = "legacy") -> Path:
-    safe = table.replace("/", "_").replace(" ", "_")
-    if project_id == "legacy":
-        return MODELS_DIR / f"{safe}__anomaly.joblib"
-    safe_project = project_id.replace("/", "_").replace(" ", "_")
-    return MODELS_DIR / f"{safe_project}__{safe}__anomaly.joblib"
 
 
 def train(table: str, project_id: str = "legacy") -> dict[str, Any]:
@@ -145,7 +126,7 @@ def train(table: str, project_id: str = "legacy") -> dict[str, Any]:
     )
     model.fit(X_scaled)
 
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    common.MODELS_DIR.mkdir(parents=True, exist_ok=True)
     payload = {
         "model": model,
         "scaler": scaler,
@@ -154,7 +135,7 @@ def train(table: str, project_id: str = "legacy") -> dict[str, Any]:
     }
     if _HAS_JOBLIB:
         try:
-            _joblib.dump(payload, _model_path(table, project_id))
+            _joblib.dump(payload, common.model_path("anomaly", table, project_id))
         except Exception as exc:
             logger.warning("Failed to persist anomaly model for %s: %s", table, exc)
 
@@ -164,7 +145,7 @@ def train(table: str, project_id: str = "legacy") -> dict[str, Any]:
 def _load_model(table: str, project_id: str = "legacy") -> dict | None:
     if not _HAS_JOBLIB:
         return None
-    path = _model_path(table, project_id)
+    path = common.model_path("anomaly", table, project_id)
     if not path.exists():
         return None
     try:
@@ -194,7 +175,7 @@ def score_table(
     if persisted is None:
         raise RuntimeError(
             f"anomaly model for {table} was trained but could not be loaded — "
-            f"check write permissions on {MODELS_DIR}"
+            f"check write permissions on {common.MODELS_DIR}"
         )
 
     timestamps, X = _load_features(table, window=timedelta(days=window_days), project_id=project_id)

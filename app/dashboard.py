@@ -277,7 +277,7 @@ def _ml_last_runs(project_id: str) -> dict[str, str | None]:
     from sqlalchemy import text
 
     from app.metrics_storage import get_engine
-    from ml.forecast import MODELS_DIR
+    from ml import common
 
     out: dict[str, str | datetime | None] = {
         "isolation_forest": None,
@@ -308,8 +308,8 @@ def _ml_last_runs(project_id: str) -> dict[str, str | None]:
         ).scalar()
     # Prophet не пишет в БД — обученные модели лежат в models/*.joblib,
     # mtime самого свежего файла = время последнего ночного переобучения.
-    if MODELS_DIR.exists():
-        mtimes = [p.stat().st_mtime for p in MODELS_DIR.glob("*.joblib")]
+    if common.MODELS_DIR.exists():
+        mtimes = [p.stat().st_mtime for p in common.MODELS_DIR.glob("*.joblib")]
         if mtimes:
             out["prophet"] = datetime.fromtimestamp(max(mtimes), tz=UTC).isoformat()
     return {k: _fmt_ts(v) for k, v in out.items()}

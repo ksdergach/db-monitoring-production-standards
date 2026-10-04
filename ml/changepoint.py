@@ -17,9 +17,10 @@ import logging
 import math
 import statistics
 from collections.abc import Iterable
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 from app.metrics_storage import get_metrics, save_changepoints
+from ml import common
 
 try:  # pragma: no cover - optional heavy dep
     import numpy as np
@@ -50,14 +51,6 @@ PELT_PENALTY = 6.0  # low enough to accept all 3 step-jumps in the seeded
 # otherwise the bursty insert noise produces ghost change-points along the
 # growth curve. Bounded-ratio metrics (null_rate) stay raw.
 _DETREND_METRICS = {"row_count", "size_bytes"}
-
-
-def _parse_ts(value: str | datetime) -> datetime:
-    if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=UTC)
-    s = value.replace("Z", "+00:00")
-    dt = datetime.fromisoformat(s)
-    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
 
 
 def _score(values: list[float], idx: int) -> tuple[float, float, float]:
@@ -150,7 +143,7 @@ def detect_changepoints(
     rows = get_metrics(table, metric, project_id, window=timedelta(days=window_days))
     if len(rows) < MIN_POINTS:
         return []
-    timestamps = [_parse_ts(r["ts"]) for r in rows]
+    timestamps = [common.parse_ts(r["ts"]) for r in rows]
     values = [float(r["value"]) for r in rows]
 
     detrend = metric in _DETREND_METRICS

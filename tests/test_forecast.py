@@ -4,6 +4,7 @@ from unittest.mock import patch
 import pytest
 
 from app.app import create_app
+from ml import common
 from ml import forecast as fc_mod
 
 
@@ -25,7 +26,7 @@ def _series(n: int, step_hours: int = 1, slope: float = 10.0, start: float = 100
 
 
 def test_forecast_uses_linear_fallback_for_short_history(tmp_path, monkeypatch):
-    monkeypatch.setattr(fc_mod, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
     monkeypatch.setattr(fc_mod, "_HAS_PROPHET", False)
     rows = _series(10, step_hours=1, slope=5.0, start=0.0)
     with (
@@ -42,7 +43,7 @@ def test_forecast_uses_linear_fallback_for_short_history(tmp_path, monkeypatch):
 
 
 def test_forecast_raises_when_too_few_points(tmp_path, monkeypatch):
-    monkeypatch.setattr(fc_mod, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
     with (
         patch.object(fc_mod, "get_metrics", return_value=_series(1)),
         patch.object(fc_mod, "get_changepoints", return_value=[]),
@@ -52,7 +53,7 @@ def test_forecast_raises_when_too_few_points(tmp_path, monkeypatch):
 
 
 def test_retrain_all_skips_empty_tables(tmp_path, monkeypatch):
-    monkeypatch.setattr(fc_mod, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
     monkeypatch.setattr(fc_mod, "_HAS_PROPHET", False)
     tables = [{"table_name": "a"}, {"table_name": "b"}]
     series_map = {"a": _series(5), "b": _series(1)}
@@ -118,7 +119,7 @@ def test_train_uses_post_changepoint_window_when_cp_is_old(tmp_path, monkeypatch
     """If the last changepoint is older than MIN_PROPHET_DAYS, train() should
     load only post-cp data — the new regime has had time to stabilise and the
     forecast should reflect it, not the pre-cp baseline."""
-    monkeypatch.setattr(fc_mod, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
     monkeypatch.setattr(fc_mod, "_HAS_PROPHET", False)
 
     now = datetime.now(UTC).replace(microsecond=0)
@@ -166,7 +167,7 @@ def test_train_uses_full_history_when_cp_is_recent(tmp_path, monkeypatch):
     survives. This is the regression that produced a flat 10K → 10K forecast
     on orders right after step3, and previously a runaway 5K → 25K forecast
     on users when the post-cp window straddled the step itself."""
-    monkeypatch.setattr(fc_mod, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
     monkeypatch.setattr(fc_mod, "_HAS_PROPHET", False)
 
     now = datetime.now(UTC).replace(microsecond=0)
@@ -218,13 +219,13 @@ def test_train_uses_full_history_when_cp_is_recent(tmp_path, monkeypatch):
 
 def test_forecast_invalidates_cache_on_new_changepoint(tmp_path, monkeypatch):
     """forecast() must retrain when a new changepoint appears since last train."""
-    monkeypatch.setattr(fc_mod, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
     monkeypatch.setattr(fc_mod, "_HAS_PROPHET", False)
 
     rows = _series(10, step_hours=1, slope=1.0, start=100.0)
 
     # Persist a model that was trained with no changepoint
-    old_model = fc_mod._fit_linear([(fc_mod._parse_ts(r["ts"]), float(r["value"])) for r in rows])
+    old_model = fc_mod._fit_linear([(common.parse_ts(r["ts"]), float(r["value"])) for r in rows])
     import joblib as _jl
 
     _jl.dump(
@@ -235,7 +236,7 @@ def test_forecast_invalidates_cache_on_new_changepoint(tmp_path, monkeypatch):
             "last_changepoint_ts": None,
             "trained_at": "2026-04-01T00:00:00",
         },
-        fc_mod._model_path("t", "row_count"),
+        common.model_path("forecast", "t", metric="row_count"),
     )
 
     # Now a changepoint has appeared
@@ -269,11 +270,11 @@ def test_forecast_invalidates_cache_on_new_changepoint(tmp_path, monkeypatch):
 
 def test_model_path_isolated_per_project(tmp_path, monkeypatch):
     """Two projects with the same table must not share a model file."""
-    monkeypatch.setattr(fc_mod, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
 
-    path_a = fc_mod._model_path("orders", "row_count", project_id="project-a")
-    path_b = fc_mod._model_path("orders", "row_count", project_id="project-b")
-    path_legacy = fc_mod._model_path("orders", "row_count", project_id="legacy")
+    path_a = common.model_path("forecast", "orders", metric="row_count", project_id="project-a")
+    path_b = common.model_path("forecast", "orders", metric="row_count", project_id="project-b")
+    path_legacy = common.model_path("forecast", "orders", metric="row_count", project_id="legacy")
 
     assert path_a != path_b, "different projects must get different model paths"
     assert path_a != path_legacy, "non-legacy project must not share path with legacy"
@@ -289,7 +290,7 @@ def test_model_path_isolated_per_project(tmp_path, monkeypatch):
 
 def test_severe_drop_uses_post_cp_points(tmp_path, monkeypatch):
     """Recent severe drop: train() must fit only on post-CP data, not full window."""
-    monkeypatch.setattr(fc_mod, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
     monkeypatch.setattr(fc_mod, "_HAS_PROPHET", False)
 
     now = datetime.now(UTC).replace(microsecond=0)
@@ -348,7 +349,7 @@ def test_severe_drop_flat_when_no_post_cp(tmp_path, monkeypatch):
     Без last_value_override forecast() взял бы last metric = 96000 и сдвинул бы
     плоский прогноз (4) обратно к 96000 через _anchor_shift. Override фиксирует это.
     """
-    monkeypatch.setattr(fc_mod, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
     monkeypatch.setattr(fc_mod, "_HAS_PROPHET", False)
 
     now = datetime.now(UTC).replace(microsecond=0)
@@ -389,7 +390,7 @@ def test_severe_drop_flat_when_no_post_cp(tmp_path, monkeypatch):
 
 def test_non_severe_recent_drop_uses_full_window(tmp_path, monkeypatch):
     """Умеренный recent drop (не severe): train() должен использовать полное окно."""
-    monkeypatch.setattr(fc_mod, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
     monkeypatch.setattr(fc_mod, "_HAS_PROPHET", False)
 
     now = datetime.now(UTC).replace(microsecond=0)
@@ -456,7 +457,7 @@ def test_anchor_shift_normalizes_when_no_shift():
 
 def test_train_writes_to_project_scoped_path(tmp_path, monkeypatch):
     """train() with a real project_id must write to the project-scoped file."""
-    monkeypatch.setattr(fc_mod, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
     monkeypatch.setattr(fc_mod, "_HAS_PROPHET", False)
     rows = _series(10, step_hours=1, slope=5.0, start=100.0)
 
@@ -466,7 +467,7 @@ def test_train_writes_to_project_scoped_path(tmp_path, monkeypatch):
     ):
         fc_mod.train("orders", "row_count", project_id="tenant-x")
 
-    expected = fc_mod._model_path("orders", "row_count", project_id="tenant-x")
-    legacy = fc_mod._model_path("orders", "row_count", project_id="legacy")
+    expected = common.model_path("forecast", "orders", metric="row_count", project_id="tenant-x")
+    legacy = common.model_path("forecast", "orders", metric="row_count", project_id="legacy")
     assert expected.exists(), "project-scoped model file must be created"
     assert not legacy.exists(), "legacy model file must NOT be created for non-legacy project"

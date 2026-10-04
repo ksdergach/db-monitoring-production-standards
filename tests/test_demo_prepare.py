@@ -15,6 +15,7 @@ import uuid
 import pytest
 
 from app import crypto, metrics_storage
+from ml import common
 from scripts import demo_prepare
 
 
@@ -37,18 +38,10 @@ def storage(tmp_path, monkeypatch):
     monkeypatch.setattr(ms, "_engine", None)
     monkeypatch.setattr(ms, "_initialized", False)
 
-    # Force scripts.demo_prepare's MODELS_DIR pointer to tmp so persisted
-    # joblibs don't leak between tests / repo.
+    # One shared directory isolates all ML writers and demo verification.
     models_dir = tmp_path / "models"
     models_dir.mkdir()
-    monkeypatch.setattr(demo_prepare, "MODELS_DIR", models_dir)
-
-    # The actual writers live in ml.forecast and ml.anomaly_detector.
-    import ml.anomaly_detector as anomaly_mod
-    import ml.forecast as forecast_mod
-
-    monkeypatch.setattr(forecast_mod, "MODELS_DIR", models_dir)
-    monkeypatch.setattr(anomaly_mod, "MODELS_DIR", models_dir)
+    monkeypatch.setattr(common, "MODELS_DIR", models_dir)
 
     return ms
 
@@ -121,11 +114,11 @@ def test_verify_project_counts_metrics_and_models(storage, tmp_path):
     )
 
     # Touch a fake forecast model file matching the naming convention
-    # used by ml/forecast.py::_model_path.
+    # used by ml/common.py::model_path.
     safe = pid.replace("/", "_").replace(" ", "_")
-    (demo_prepare.MODELS_DIR / f"{safe}__users__row_count.joblib").touch()
+    (common.MODELS_DIR / f"{safe}__users__row_count.joblib").touch()
     # And one anomaly file.
-    (demo_prepare.MODELS_DIR / f"{safe}__users__anomaly.joblib").touch()
+    (common.MODELS_DIR / f"{safe}__users__anomaly.joblib").touch()
 
     v = demo_prepare.verify_project(pid)
     assert v["metrics"] == 1
