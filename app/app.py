@@ -247,6 +247,9 @@ def _validate_production_secrets(config: dict | None = None) -> None:
 
 
 def create_app(config: dict | None = None):
+    from ml.settings import ml_settings
+
+    _ = ml_settings
     _validate_production_secrets(config)
 
     # Order matters: configure formatters/handlers BEFORE the DSN-scrub

@@ -28,6 +28,7 @@ from typing import Any
 from app.metrics_storage import get_metrics
 from ml import common
 from ml.common import InsufficientDataError as InsufficientDataError
+from ml.settings import ml_settings
 
 try:
     import numpy as np
@@ -50,9 +51,6 @@ except Exception:  # pragma: no cover
     _HAS_JOBLIB = False
 
 logger = logging.getLogger(__name__)
-
-MIN_POINTS = 200
-TRAIN_WINDOW_DAYS = 60
 
 
 FEATURE_NAMES = ("row_count", "null_rate", "d_row_count", "d_null_rate")
@@ -106,11 +104,11 @@ def train(table: str, project_id: str = "legacy") -> dict[str, Any]:
     Raises InsufficientDataError when history is too short.
     """
     timestamps, X = _load_features(
-        table, window=timedelta(days=TRAIN_WINDOW_DAYS), project_id=project_id
+        table, window=timedelta(days=ml_settings.ANOMALY_TRAIN_WINDOW_DAYS), project_id=project_id
     )
-    if len(timestamps) < MIN_POINTS:
+    if len(timestamps) < ml_settings.ANOMALY_MIN_POINTS:
         raise InsufficientDataError(
-            f"need at least {MIN_POINTS} points for {table}, got {len(timestamps)}"
+            f"need at least {ml_settings.ANOMALY_MIN_POINTS} points for {table}, got {len(timestamps)}"
         )
 
     scaler = StandardScaler()
@@ -120,9 +118,9 @@ def train(table: str, project_id: str = "legacy") -> dict[str, Any]:
     # data is flagged — conservative enough to keep FPR well below 5% on
     # normal data, while still surfacing real anomalies.
     model = IsolationForest(
-        n_estimators=100,
-        contamination=0.01,
-        random_state=42,
+        n_estimators=ml_settings.ANOMALY_N_ESTIMATORS,
+        contamination=ml_settings.ANOMALY_CONTAMINATION,
+        random_state=ml_settings.ANOMALY_RANDOM_STATE,
     )
     model.fit(X_scaled)
 

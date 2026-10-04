@@ -21,6 +21,7 @@ from datetime import timedelta
 
 from app.metrics_storage import get_metrics, save_changepoints
 from ml import common
+from ml.settings import ml_settings
 
 try:  # pragma: no cover - optional heavy dep
     import numpy as np
@@ -34,15 +35,11 @@ except Exception:  # pragma: no cover
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_WINDOW_DAYS = 14
 MIN_POINTS = 8
-MIN_SCORE = 1.5  # below this, the shift is in the noise floor
 MIN_SEGMENT = 4  # don't treat first/last 4 points as a change-point
-MIN_RELATIVE_SHIFT = 0.15  # secondary filter — ignore <15% shifts of the pre-mean
 LOCAL_WINDOW_POINTS = 48  # ≈ 12h at 15-min ticks; scope scoring locally so an
 # earlier shift doesn't pollute the before-window stats
 DEDUPE_WINDOW_HOURS = 72  # collapse PELT's hierarchical splits around the same real shift
-PELT_PENALTY = 6.0  # low enough to accept all 3 step-jumps in the seeded
 # 14-day demo (3 splits over 4 segments); MIN_SCORE +
 # MIN_RELATIVE_SHIFT + 72h _dedupe filter the noise
 # PELT's higher split count introduces.
@@ -96,7 +93,7 @@ def _detect_pelt(values: list[float], detrend: bool = False) -> list[int]:
     arr = np.asarray(series, dtype=float).reshape(-1, 1)
     algo = rpt.Pelt(model="rbf", min_size=MIN_SEGMENT).fit(arr)
     # ruptures returns segment END indices; the last one is len(values).
-    bkps = [b for b in algo.predict(pen=PELT_PENALTY) if b < len(values)]
+    bkps = [b for b in algo.predict(pen=ml_settings.CHANGEPOINT_PELT_PENALTY) if b < len(values)]
     return bkps
 
 
@@ -120,7 +117,7 @@ def _detect_cusum(values: list[float]) -> list[int]:
             score, _, _ = _score(values[lo:hi], i - lo)
             if score > best_score:
                 best_idx, best_score = i, score
-        if best_idx < 0 or best_score < MIN_SCORE:
+        if best_idx < 0 or best_score < ml_settings.CHANGEPOINT_MIN_SCORE:
             continue
         bkps.append(best_idx)
         queue.append((lo, best_idx))
@@ -131,7 +128,7 @@ def _detect_cusum(values: list[float]) -> list[int]:
 def detect_changepoints(
     table: str,
     metric: str,
-    window_days: int = DEFAULT_WINDOW_DAYS,
+    window_days: int | None = None,
     project_id: str = "legacy",
 ) -> list[dict]:
     """Return change-point events for a single (table, metric) series.
@@ -140,6 +137,9 @@ def detect_changepoints(
     Scores below ``MIN_SCORE`` are suppressed — they fall into noise and
     polluting the chart with weak annotations is worse than missing them.
     """
+    if window_days is None:
+        window_days = ml_settings.CHANGEPOINT_WINDOW_DAYS
+
     rows = get_metrics(table, metric, project_id, window=timedelta(days=window_days))
     if len(rows) < MIN_POINTS:
         return []
@@ -154,10 +154,10 @@ def detect_changepoints(
         if idx < MIN_SEGMENT or idx > len(values) - MIN_SEGMENT:
             continue
         score, before, after = _score(values, idx)
-        if score < MIN_SCORE or not math.isfinite(score):
+        if score < ml_settings.CHANGEPOINT_MIN_SCORE or not math.isfinite(score):
             continue
         denom = max(abs(before), 1e-6)
-        if abs(after - before) / denom < MIN_RELATIVE_SHIFT:
+        if abs(after - before) / denom < ml_settings.CHANGEPOINT_MIN_RELATIVE_SHIFT:
             continue
         events.append(
             {
@@ -215,7 +215,7 @@ def _dedupe(events: list[dict]) -> list[dict]:
 
 def detect_all(
     metrics: Iterable[str] = ("row_count", "null_rate"),
-    window_days: int = DEFAULT_WINDOW_DAYS,
+    window_days: int | None = None,
     project_id: str = "legacy",
     tables: Iterable[str] | None = None,
 ) -> dict:
@@ -224,6 +224,9 @@ def detect_all(
     Returns counts dict plus ``events`` list so callers can act on newly
     detected change-points without an extra DB round-trip.
     """
+    if window_days is None:
+        window_days = ml_settings.CHANGEPOINT_WINDOW_DAYS
+
     if tables is None:
         from app.db import list_tables  # local import — avoids app import cycle
 

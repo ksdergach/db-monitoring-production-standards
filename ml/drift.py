@@ -24,12 +24,9 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import text
 
 from app.metrics_storage import get_engine
+from ml.settings import ml_settings
 
 # PSI thresholds — see docstring above.
-PSI_WARN = 0.2
-PSI_CRITICAL = 0.25
-KS_PVALUE_THRESHOLD = 0.05
-BASELINE_DAYS = 7
 SMOOTHING = 1e-4
 
 _NUMERIC_TYPE_FRAGMENTS = (
@@ -112,9 +109,9 @@ def ks_two_sample(
 
 
 def _severity(psi_value: float) -> str:
-    if psi_value > PSI_CRITICAL:
+    if psi_value > ml_settings.DRIFT_PSI_CRITICAL:
         return "critical"
-    if psi_value > PSI_WARN:
+    if psi_value > ml_settings.DRIFT_PSI_WARN:
         return "warn"
     return "ok"
 
@@ -189,7 +186,7 @@ def _numeric_pairs(buckets: list[dict]) -> list[tuple[float, int]]:
 
 def compute_drift(
     table_name: str,
-    baseline_days: int = BASELINE_DAYS,
+    baseline_days: int | None = None,
     project_id: str = "legacy",
 ) -> list[dict]:
     """Return per-column drift report for `table_name`.
@@ -199,6 +196,9 @@ def compute_drift(
     possible). When fewer than 2 snapshots exist for a column, severity is
     "insufficient_data" and is_drift is False.
     """
+    if baseline_days is None:
+        baseline_days = ml_settings.DRIFT_BASELINE_DAYS
+
     since = datetime.now(UTC) - timedelta(days=baseline_days)
     snapshots = _load_distributions(table_name, since, project_id=project_id)
     if not snapshots:
@@ -230,7 +230,7 @@ def compute_drift(
             _, ks_p = ks_two_sample(_numeric_pairs(base_buckets), _numeric_pairs(cur_buckets))
 
         severity = _severity(psi_val)
-        is_drift = severity != "ok" or (ks_p is not None and ks_p < KS_PVALUE_THRESHOLD)
+        is_drift = severity != "ok" or (ks_p is not None and ks_p < ml_settings.DRIFT_KS_PVALUE)
         out.append(
             {
                 "column": column,

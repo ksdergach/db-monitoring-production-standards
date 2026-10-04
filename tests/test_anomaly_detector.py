@@ -3,11 +3,13 @@
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
+import joblib
 import pytest
 
 from app.app import create_app
 from ml import anomaly_detector as ad
 from ml import common
+from ml.settings import MLSettings, ml_settings
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -97,7 +99,7 @@ def test_train_raises_when_too_few_points_after_delta(tmp_path, monkeypatch):
 
 def test_train_persists_model(tmp_path, monkeypatch):
     monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
-    monkeypatch.setattr(ad, "MIN_POINTS", 10)  # lower threshold for test speed
+    monkeypatch.setattr(ml_settings, "ANOMALY_MIN_POINTS", 10)  # lower threshold for test speed
     rc = _series(50)
     nr = _series(50, base=0.05, slope=0.0)
     with patch.object(ad, "get_metrics", side_effect=_make_side_effect(rc, nr)):
@@ -106,9 +108,27 @@ def test_train_persists_model(tmp_path, monkeypatch):
     assert meta["n_points"] == 49
 
 
+def test_train_uses_contamination_from_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("ML_ANOMALY_CONTAMINATION", "0.05")
+    configured = MLSettings(_env_file=None)
+
+    monkeypatch.setattr(ad, "ml_settings", configured)
+    monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(configured, "ANOMALY_MIN_POINTS", 10)
+
+    rc = _series(50)
+    nr = _series(50, base=0.05, slope=0.0)
+
+    with patch.object(ad, "get_metrics", side_effect=_make_side_effect(rc, nr)):
+        ad.train("t")
+
+    payload = joblib.load(tmp_path / "t__anomaly.joblib")
+    assert payload["model"].contamination == 0.05
+
+
 def test_train_returns_metadata(tmp_path, monkeypatch):
     monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
-    monkeypatch.setattr(ad, "MIN_POINTS", 10)
+    monkeypatch.setattr(ml_settings, "ANOMALY_MIN_POINTS", 10)
     rc = _series(50)
     nr = _series(50, base=0.02, slope=0.0)
     with patch.object(ad, "get_metrics", side_effect=_make_side_effect(rc, nr)):
@@ -124,7 +144,7 @@ def test_train_returns_metadata(tmp_path, monkeypatch):
 
 def test_score_table_returns_list_of_dicts(tmp_path, monkeypatch):
     monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
-    monkeypatch.setattr(ad, "MIN_POINTS", 10)
+    monkeypatch.setattr(ml_settings, "ANOMALY_MIN_POINTS", 10)
     n = 60
     rc = _series(n)
     nr = _series(n, base=0.02, slope=0.0)
@@ -141,7 +161,7 @@ def test_score_table_returns_list_of_dicts(tmp_path, monkeypatch):
 def test_score_table_detects_spike(tmp_path, monkeypatch):
     """A clear null_rate spike should produce at least one is_anomaly=1 point."""
     monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
-    monkeypatch.setattr(ad, "MIN_POINTS", 10)
+    monkeypatch.setattr(ml_settings, "ANOMALY_MIN_POINTS", 10)
     n = 300
     spike_start, spike_end = 250, 270
     rc = _series(n)
@@ -156,7 +176,7 @@ def test_score_table_detects_spike(tmp_path, monkeypatch):
 def test_score_table_low_fpr_on_stable_data(tmp_path, monkeypatch):
     """On stable data, fewer than 5% of points should be flagged as anomalies."""
     monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
-    monkeypatch.setattr(ad, "MIN_POINTS", 10)
+    monkeypatch.setattr(ml_settings, "ANOMALY_MIN_POINTS", 10)
     n = 300
     rc = _series(n, slope=10.0)
     nr = _series(n, base=0.02, slope=0.0)
@@ -170,7 +190,7 @@ def test_score_table_low_fpr_on_stable_data(tmp_path, monkeypatch):
 def test_score_table_trains_on_demand_if_no_model(tmp_path, monkeypatch):
     """score_table should train automatically when no persisted model exists."""
     monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
-    monkeypatch.setattr(ad, "MIN_POINTS", 10)
+    monkeypatch.setattr(ml_settings, "ANOMALY_MIN_POINTS", 10)
     n = 50
     rc = _series(n)
     nr = _series(n, base=0.02, slope=0.0)
@@ -186,7 +206,7 @@ def test_score_table_trains_on_demand_if_no_model(tmp_path, monkeypatch):
 
 def test_retrain_all_counts(tmp_path, monkeypatch):
     monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
-    monkeypatch.setattr(ad, "MIN_POINTS", 10)
+    monkeypatch.setattr(ml_settings, "ANOMALY_MIN_POINTS", 10)
     tables = [{"table_name": "a"}, {"table_name": "b"}, {"table_name": "c"}]
     rc_long = _series(50)
     nr_long = _series(50, base=0.02, slope=0.0)
