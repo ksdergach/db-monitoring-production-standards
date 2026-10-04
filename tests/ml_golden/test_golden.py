@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,9 @@ TABLE = "golden_table"
 PROJECT_ID = "golden-project"
 EXPECTED_DIR = Path(__file__).parent / "expected"
 UPDATE_GOLDEN = os.environ.get("GOLDEN_UPDATE") == "1"
+PROPHET_GOLDEN_PLATFORM = (
+    platform.system().lower() == "linux" and platform.machine().lower() == "x86_64"
+)
 
 
 def _write_expected(path: Path, value: Any) -> None:
@@ -165,6 +169,12 @@ def test_forecast_linear_golden(tmp_path, monkeypatch):
     _assert_or_update("forecast_linear_d1.json", actual, rtol=1e-9)
 
 
+@pytest.mark.skipif(
+    not PROPHET_GOLDEN_PLATFORM,
+    reason=(
+        "Prophet golden is validated on Linux x86_64 (CI); other platforms may differ by up to 0.2%"
+    ),
+)
 def test_forecast_prophet_golden(tmp_path, monkeypatch):
     assert forecast_mod._HAS_PROPHET, "Prophet is required for the Prophet golden test"
 
