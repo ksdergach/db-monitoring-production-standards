@@ -12,6 +12,7 @@ import pytest
 from ml import anomaly_detector as anomaly
 from ml import changepoint, common
 from ml import forecast as forecast_mod
+from ml.settings import ml_settings
 
 from .datasets import d1, d2, d3, d4
 
@@ -112,7 +113,7 @@ def test_anomaly_golden(name, factory, tmp_path, monkeypatch):
     _patch_metrics(monkeypatch, anomaly, dataset)
 
     metadata = anomaly.train(TABLE, project_id=PROJECT_ID)
-    assert metadata["n_points"] >= anomaly.MIN_POINTS
+    assert metadata["n_points"] >= ml_settings.ANOMALY_MIN_POINTS
 
     actual = anomaly.score_table(
         TABLE,

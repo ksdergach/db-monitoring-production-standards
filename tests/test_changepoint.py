@@ -6,6 +6,7 @@ import pytest
 from app.app import create_app
 from app.metrics_storage import get_changepoints, save_changepoints
 from ml import changepoint as cp_mod
+from ml.settings import ml_settings
 
 
 def _series(values, start=None, step_minutes=15):
@@ -47,7 +48,7 @@ def test_detects_step_shift_in_synthetic_series():
         events = cp_mod.detect_changepoints("orders", "null_rate", window_days=14)
     assert events, "expected at least one change-point"
     e = events[0]
-    assert e["score"] > cp_mod.MIN_SCORE
+    assert e["score"] > ml_settings.CHANGEPOINT_MIN_SCORE
     assert e["value_before"] < 0.05
     assert e["value_after"] > 0.15
 
@@ -87,7 +88,7 @@ def test_detect_all_persists_events(clean_metrics):
     assert counts["detected"] >= 1
     saved = get_changepoints("orders", metric_name="null_rate")
     assert saved, "expected persisted change-point row for orders/null_rate"
-    assert saved[0]["score"] > cp_mod.MIN_SCORE
+    assert saved[0]["score"] > ml_settings.CHANGEPOINT_MIN_SCORE
 
 
 # ---------------------------------------------------------------------------

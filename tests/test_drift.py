@@ -7,12 +7,12 @@ from sqlalchemy import text
 
 from app.app import create_app
 from app.metrics_storage import get_engine
-from ml import drift as drift_mod
 from ml.drift import (
     compute_drift,
     ks_two_sample,
     psi,
 )
+from ml.settings import ml_settings
 
 # ---------------------------------------------------------------------------
 # PSI
@@ -33,7 +33,7 @@ def test_psi_low_for_minor_shift():
 def test_psi_above_critical_for_major_shift():
     base = {"a": 0.7, "b": 0.2, "c": 0.1}
     cur = {"a": 0.2, "b": 0.3, "c": 0.5}
-    assert psi(base, cur) > drift_mod.PSI_CRITICAL
+    assert psi(base, cur) > ml_settings.DRIFT_PSI_CRITICAL
 
 
 def test_psi_handles_new_categories_via_smoothing():
@@ -123,7 +123,7 @@ def test_compute_drift_flags_shifted_column(clean_metrics):
     assert row["column"] == "source"
     assert row["is_drift"] is True
     assert row["severity"] == "critical"
-    assert row["psi"] > drift_mod.PSI_CRITICAL
+    assert row["psi"] > ml_settings.DRIFT_PSI_CRITICAL
 
 
 def test_compute_drift_clean_for_stable_column(clean_metrics):

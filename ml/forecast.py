@@ -20,6 +20,7 @@ from typing import Any
 from app.metrics_storage import get_changepoints, get_metrics
 from ml import common
 from ml.common import InsufficientDataError as InsufficientDataError
+from ml.settings import ml_settings
 
 try:  # pragma: no cover - optional heavy dep
     from prophet import Prophet
@@ -39,7 +40,6 @@ except Exception:  # pragma: no cover
 
 logger = logging.getLogger(__name__)
 
-MIN_PROPHET_DAYS = 7
 MIN_POINTS = 2
 
 
@@ -91,21 +91,25 @@ def _fit_prophet(points: list[tuple[datetime, float]]) -> Any:  # pragma: no cov
     df = pd.DataFrame(
         {"ds": [p[0].replace(tzinfo=None) for p in points], "y": [p[1] for p in points]}
     )
-    m = Prophet(interval_width=0.95, daily_seasonality=False, weekly_seasonality=True)
+    m = Prophet(
+        interval_width=ml_settings.FORECAST_INTERVAL_WIDTH,
+        daily_seasonality=ml_settings.FORECAST_DAILY_SEASONALITY,
+        weekly_seasonality=ml_settings.FORECAST_WEEKLY_SEASONALITY,
+    )
     m.fit(df)
     return m
 
 
-_SEVERE_DROP_RATIO = 0.2
-
-
-def _is_severe_drop(cp: dict, threshold: float = _SEVERE_DROP_RATIO) -> bool:
+def _is_severe_drop(cp: dict, threshold: float | None = None) -> bool:
     """True when the changepoint represents a large sudden decrease.
 
     Criterion: value_after < value_before AND value_after / value_before < threshold.
     Used to switch the training strategy: instead of a full-window fit that
     extrapolates the negative trend into the future, we use only post-CP data.
     """
+    if threshold is None:
+        threshold = ml_settings.FORECAST_SEVERE_DROP_RATIO
+
     before = cp.get("value_before", 1.0)
     after = cp.get("value_after", 0.0)
     if before <= 0:
@@ -204,7 +208,7 @@ def train(table: str, metric: str = "row_count", project_id: str = "legacy") -> 
     if last_cp_ts is not None:
         since = common.parse_ts(last_cp_ts)
         cp_age_days = (datetime.now(UTC) - since).total_seconds() / 86400.0
-        if cp_age_days >= MIN_PROPHET_DAYS:
+        if cp_age_days >= ml_settings.FORECAST_MIN_PROPHET_DAYS:
             # Old changepoint — the new regime has had time to stabilise.
             # Fit only on strictly-post-cp data so the forecast reflects
             # the new regime, not the pre-cp baseline. The simple
@@ -252,7 +256,7 @@ def train(table: str, metric: str = "row_count", project_id: str = "legacy") -> 
             f"need at least {MIN_POINTS} points for {table}/{metric}, got {len(points)}"
         )
     span_days = (points[-1][0] - points[0][0]).total_seconds() / 86400.0
-    if _HAS_PROPHET and span_days >= MIN_PROPHET_DAYS:
+    if _HAS_PROPHET and span_days >= ml_settings.FORECAST_MIN_PROPHET_DAYS:
         model = _fit_prophet(points)
         kind = "prophet"
     else:
