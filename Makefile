@@ -229,3 +229,7 @@ check: ## Все хуки pre-commit на всех файлах — то же, �
 
 hooks: ## Включить хуки перед коммитом (один раз после клонирования)
 	poetry run pre-commit install
+
+.PHONY: golden-update
+golden-update:
+	GOLDEN_UPDATE=1 poetry run pytest tests/ml_golden -q

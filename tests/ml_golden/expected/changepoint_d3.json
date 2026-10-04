@@ -1,0 +1,18 @@
+[
+  {
+    "ts": "2026-01-06T12:15:00+00:00",
+    "table_name": "golden_table",
+    "metric_name": "row_count",
+    "score": 3.47,
+    "value_before": 2204.8983,
+    "value_after": 2685.5979
+  },
+  {
+    "ts": "2026-01-10T05:00:00+00:00",
+    "table_name": "golden_table",
+    "metric_name": "row_count",
+    "score": 39.44,
+    "value_before": 5754.5775,
+    "value_after": 11233.6773
+  }
+]
