@@ -2,19 +2,19 @@
 
 The connections table stores DSNs as Fernet ciphertext — even a leak of
 the metrics SQLite file shouldn't expose database credentials. The key
-itself lives in the ``FERNET_KEY`` env var, OUTSIDE the database, so
-"compromise of the DB file" and "compromise of the key" are independent
-events.
+itself lives outside the database, so "compromise of the DB file" and
+"compromise of the key" are independent events.
 
 Behavior by environment:
-- ``FERNET_KEY`` set → use it. This is the production path.
-- ``FERNET_KEY`` unset AND ``FLASK_ENV`` ≠ production → generate one,
-  write it to ``.env.local``, log a loud warning. Lets a new contributor
-  ``git clone && python -m app.app`` without a setup step.
-- ``FERNET_KEY`` unset AND ``FLASK_ENV`` == production → raise
-  ``RuntimeError`` at first use. We refuse to operate on
-  encrypted-at-rest data with a randomly-generated key in prod (it would
-  be lost on every restart, making every stored DSN unrecoverable).
+- ``FERNET_KEY`` set in the process environment → use it.
+- ``FERNET_KEY`` unset in the process environment but present in ``.env`` →
+  use it in both development and production.
+- ``FERNET_KEY`` absent from both the process environment and ``.env``,
+  and ``FLASK_ENV`` ≠ production → use ``.env.local`` if present; otherwise
+  generate a key, write it to ``.env.local``, and log a loud warning.
+- ``FERNET_KEY`` absent from both the process environment and ``.env``,
+  and production → raise ``FernetKeyMissing``. ``.env.local`` is never used
+  in production.
 """
 
 from __future__ import annotations
@@ -25,6 +25,8 @@ import threading
 from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
+
+from .config import is_production
 
 logger = logging.getLogger(__name__)
 
@@ -41,24 +43,28 @@ class FernetKeyMissing(RuntimeError):
 
 
 def _load_key() -> bytes:
-    """Read the key from env, or generate one in non-prod.
+    """Read the key from the environment or dotenv files.
 
-    Generated keys are persisted to ``.env.local`` so the same process
-    (and its restarts) keep decrypting what they encrypted. Without that,
-    every gunicorn worker would have its own throwaway key.
+    ``.env`` is allowed in every environment. ``.env.local`` is a development
+    fallback only. Generated development keys are persisted to ``.env.local``
+    so the same process (and its restarts) keeps decrypting what it encrypted.
     """
     raw = os.environ.get("FERNET_KEY")
     if raw:
         return raw.encode("ascii") if isinstance(raw, str) else raw
 
-    flask_env = (os.environ.get("FLASK_ENV") or "development").lower()
-    if flask_env == "production":
+    from_env_file = _load_key_from_dotenv(_ENV)
+    if from_env_file:
+        os.environ["FERNET_KEY"] = from_env_file.decode("ascii")
+        return from_env_file
+
+    if is_production():
         raise FernetKeyMissing(
             "FERNET_KEY must be set in production — refusing to generate a "
             "throwaway key. See .env.example."
         )
 
-    existing = _load_key_from_dotenv(_ENV) or _load_key_from_dotenv(_ENV_LOCAL)
+    existing = _load_key_from_dotenv(_ENV_LOCAL)
     if existing:
         os.environ["FERNET_KEY"] = existing.decode("ascii")
         return existing
@@ -92,34 +98,44 @@ def _load_key() -> bytes:
 def _load_key_from_dotenv(path: Path) -> bytes | None:
     """Return the last FERNET_KEY from a dotenv file, if present.
 
-    Local CLI scripts should use the same key as docker-compose (`.env`)
-    before falling back to `.env.local`; otherwise they can re-encrypt DSNs
+    Local CLI scripts should use the same key as docker-compose (``.env``)
+    before falling back to ``.env.local``; otherwise they can re-encrypt DSNs
     with a key the app container does not know.
     """
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except OSError:
         return None
+
     for line in reversed(lines):
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
         if not stripped.startswith("FERNET_KEY="):
             continue
+
         value = stripped.split("=", 1)[1].strip().strip("\"'")
         if value:
             return value.encode("ascii")
+
     return None
 
 
 def _get_fernet() -> Fernet:
     """Lazy-init singleton — first call may write .env.local (dev only)."""
     global _fernet
+
     if _fernet is None:
         with _lock:
             if _fernet is None:
                 _fernet = Fernet(_load_key())
+
     return _fernet
+
+
+def validate_fernet_key() -> None:
+    """Validate that the configured Fernet key can be used."""
+    Fernet(_load_key())
 
 
 def encrypt_dsn(plain: str) -> bytes:
@@ -130,9 +146,12 @@ def encrypt_dsn(plain: str) -> bytes:
 
 
 def decrypt_dsn(ciphertext: bytes) -> str:
-    """Decrypt previously-encrypted DSN. Raises ``InvalidToken`` if the
-    ciphertext was produced by a different key (e.g. after key rotation
-    without re-encryption) or if the input is corrupted."""
+    """Decrypt previously-encrypted DSN.
+
+    Raises ``InvalidToken`` if the ciphertext was produced by a different
+    key (e.g. after key rotation without re-encryption) or if the input is
+    corrupted.
+    """
     if not ciphertext:
         raise ValueError("Cannot decrypt empty ciphertext")
     return _get_fernet().decrypt(ciphertext).decode("utf-8")
@@ -160,6 +179,7 @@ def decrypt_token(ciphertext: bytes) -> str:
 def reset_for_tests() -> None:
     """Drop the cached Fernet so tests can swap keys per-test via env."""
     global _fernet
+
     with _lock:
         _fernet = None
 
@@ -172,4 +192,5 @@ __all__ = [
     "encrypt_dsn",
     "encrypt_token",
     "reset_for_tests",
+    "validate_fernet_key",
 ]

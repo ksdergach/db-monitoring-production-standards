@@ -11,8 +11,9 @@ from .admin import bp as admin_bp
 from .api import api
 from .auth import _abort_if_unauthenticated, limiter, login_manager
 from .auth import bp as auth_bp
-from .config import settings
+from .config import is_production, settings
 from .connections import bp as connections_bp
+from .crypto import validate_fernet_key
 from .dashboard import bp as dashboard_bp
 from .dashboard import status_class
 from .health import build_health_payload
@@ -217,7 +218,37 @@ def _cleanup_stale_collector_runs() -> None:
         )
 
 
+_UNSAFE_SECRET_KEYS = {
+    "dev-secret",
+    "change-me-to-something-random",
+}
+
+
+def _validate_production_secrets(config: dict | None = None) -> None:
+    """Fail fast when production secrets are missing or unsafe."""
+    if not is_production():
+        return
+
+    secret_key = settings.SECRET_KEY
+    if config is not None and "SECRET_KEY" in config:
+        secret_key = config["SECRET_KEY"]
+
+    if (
+        not isinstance(secret_key, str)
+        or not secret_key
+        or secret_key in _UNSAFE_SECRET_KEYS
+        or len(secret_key) < 32
+    ):
+        raise RuntimeError(
+            "A strong SECRET_KEY of at least 32 characters is required in production."
+        )
+
+    validate_fernet_key()
+
+
 def create_app(config: dict | None = None):
+    _validate_production_secrets(config)
+
     # Order matters: configure formatters/handlers BEFORE the DSN-scrub
     # filter so the scrubber gets attached to the JSON/text handler we
     # actually use. _ensure_dsn_logging_filter is idempotent per process.
