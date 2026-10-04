@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from ml import anomaly_detector as anomaly
-from ml import changepoint
+from ml import changepoint, common
 from ml import forecast as forecast_mod
 
 from .datasets import d1, d2, d3, d4
@@ -108,7 +108,7 @@ def _patch_metrics(monkeypatch, module, dataset: dict[str, list[dict[str, object
 )
 def test_anomaly_golden(name, factory, tmp_path, monkeypatch):
     dataset = factory()
-    monkeypatch.setattr(anomaly, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
     _patch_metrics(monkeypatch, anomaly, dataset)
 
     metadata = anomaly.train(TABLE, project_id=PROJECT_ID)
@@ -124,7 +124,7 @@ def test_anomaly_golden(name, factory, tmp_path, monkeypatch):
 
 def test_anomaly_d4_raises_insufficient_data(tmp_path, monkeypatch):
     dataset = d4()
-    monkeypatch.setattr(anomaly, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
     _patch_metrics(monkeypatch, anomaly, dataset)
 
     with pytest.raises(anomaly.InsufficientDataError):
@@ -155,7 +155,7 @@ def test_forecast_linear_golden(tmp_path, monkeypatch):
     dataset = d1()
     dataset["row_count"] = dataset["row_count"][:300]
 
-    monkeypatch.setattr(forecast_mod, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
     monkeypatch.setattr(forecast_mod, "_HAS_PROPHET", False)
     monkeypatch.setattr(forecast_mod, "get_changepoints", lambda *args, **kwargs: [])
     _patch_metrics(monkeypatch, forecast_mod, dataset)
@@ -179,7 +179,7 @@ def test_forecast_prophet_golden(tmp_path, monkeypatch):
     assert forecast_mod._HAS_PROPHET, "Prophet is required for the Prophet golden test"
 
     dataset = d1()
-    monkeypatch.setattr(forecast_mod, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
     monkeypatch.setattr(forecast_mod, "get_changepoints", lambda *args, **kwargs: [])
     _patch_metrics(monkeypatch, forecast_mod, dataset)
 

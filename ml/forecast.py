@@ -15,10 +15,11 @@ import logging
 import math
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 from app.metrics_storage import get_changepoints, get_metrics
+from ml import common
+from ml.common import InsufficientDataError as InsufficientDataError
 
 try:  # pragma: no cover - optional heavy dep
     from prophet import Prophet
@@ -38,13 +39,8 @@ except Exception:  # pragma: no cover
 
 logger = logging.getLogger(__name__)
 
-MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
 MIN_PROPHET_DAYS = 7
 MIN_POINTS = 2
-
-
-class InsufficientDataError(Exception):
-    """Raised when not enough history is available to fit any model."""
 
 
 @dataclass
@@ -65,20 +61,11 @@ class LinearModel:
         return yhat, yhat - margin, yhat + margin
 
 
-def _parse_ts(value: str | datetime) -> datetime:
-    if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=UTC)
-    # SQLAlchemy may hand back tz-naive ISO strings depending on the driver.
-    s = value.replace("Z", "+00:00")
-    dt = datetime.fromisoformat(s)
-    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
-
-
 def _load_history(
     table: str, metric: str, days: int = 60, project_id: str = "legacy"
 ) -> list[tuple[datetime, float]]:
     rows = get_metrics(table, metric, project_id, window=timedelta(days=days))
-    return [(_parse_ts(r["ts"]), float(r["value"])) for r in rows]
+    return [(common.parse_ts(r["ts"]), float(r["value"])) for r in rows]
 
 
 def _fit_linear(points: list[tuple[datetime, float]]) -> LinearModel:
@@ -207,14 +194,6 @@ def _predict_linear(
     return _anchor_shift(out, last_value)
 
 
-def _model_path(table: str, metric: str, project_id: str = "legacy") -> Path:
-    safe = f"{table}__{metric}".replace("/", "_")
-    if project_id == "legacy":
-        return MODELS_DIR / f"{safe}.joblib"
-    safe_project = project_id.replace("/", "_").replace(" ", "_")
-    return MODELS_DIR / f"{safe_project}__{safe}.joblib"
-
-
 def train(table: str, metric: str = "row_count", project_id: str = "legacy") -> dict[str, Any]:
     """Fit a forecast model for (table, metric, project_id), persist it, return metadata."""
     cps = get_changepoints(table, metric, window=timedelta(days=60), project_id=project_id)
@@ -223,7 +202,7 @@ def train(table: str, metric: str = "row_count", project_id: str = "legacy") -> 
     last_value_override: float | None = None
 
     if last_cp_ts is not None:
-        since = _parse_ts(last_cp_ts)
+        since = common.parse_ts(last_cp_ts)
         cp_age_days = (datetime.now(UTC) - since).total_seconds() / 86400.0
         if cp_age_days >= MIN_PROPHET_DAYS:
             # Old changepoint — the new regime has had time to stabilise.
@@ -280,7 +259,7 @@ def train(table: str, metric: str = "row_count", project_id: str = "legacy") -> 
         model = _fit_linear(points)
         kind = "linear"
 
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    common.MODELS_DIR.mkdir(parents=True, exist_ok=True)
     payload = {
         "kind": kind,
         "model": model,
@@ -291,7 +270,7 @@ def train(table: str, metric: str = "row_count", project_id: str = "legacy") -> 
     }
     if _HAS_JOBLIB:
         try:
-            joblib.dump(payload, _model_path(table, metric, project_id))
+            joblib.dump(payload, common.model_path("forecast", table, project_id, metric))
         except Exception as e:  # pragma: no cover
             logger.warning("Failed to persist model for %s/%s: %s", table, metric, e)
     return {"kind": kind, "points": len(points), "span_days": span_days}
@@ -300,7 +279,7 @@ def train(table: str, metric: str = "row_count", project_id: str = "legacy") -> 
 def _load_persisted(table: str, metric: str, project_id: str = "legacy") -> dict | None:
     if not _HAS_JOBLIB:
         return None
-    path = _model_path(table, metric, project_id)
+    path = common.model_path("forecast", table, project_id, metric)
     if not path.exists():
         return None
     try:
@@ -335,7 +314,7 @@ def forecast(
     persisted = _load_persisted(table, metric, project_id)
     fresh = (
         persisted is not None
-        and _parse_ts(persisted["last_ts"]) >= last_ts - timedelta(hours=1)
+        and common.parse_ts(persisted["last_ts"]) >= last_ts - timedelta(hours=1)
         and persisted.get("last_changepoint_ts") == last_cp_ts
     )
     # The explicit None check narrows the type of `persisted` for mypy; `fresh` already implies it.

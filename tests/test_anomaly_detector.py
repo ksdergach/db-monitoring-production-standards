@@ -7,6 +7,7 @@ import pytest
 
 from app.app import create_app
 from ml import anomaly_detector as ad
+from ml import common
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -85,7 +86,7 @@ def test_load_features_returns_correct_shape():
 
 
 def test_train_raises_when_too_few_points_after_delta(tmp_path, monkeypatch):
-    monkeypatch.setattr(ad, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
     # 150 rows → 149 after delta, below MIN_POINTS=200
     rc = _series(150)
     nr = _series(150, base=0.05, slope=0.0)
@@ -95,7 +96,7 @@ def test_train_raises_when_too_few_points_after_delta(tmp_path, monkeypatch):
 
 
 def test_train_persists_model(tmp_path, monkeypatch):
-    monkeypatch.setattr(ad, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
     monkeypatch.setattr(ad, "MIN_POINTS", 10)  # lower threshold for test speed
     rc = _series(50)
     nr = _series(50, base=0.05, slope=0.0)
@@ -106,7 +107,7 @@ def test_train_persists_model(tmp_path, monkeypatch):
 
 
 def test_train_returns_metadata(tmp_path, monkeypatch):
-    monkeypatch.setattr(ad, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
     monkeypatch.setattr(ad, "MIN_POINTS", 10)
     rc = _series(50)
     nr = _series(50, base=0.02, slope=0.0)
@@ -122,7 +123,7 @@ def test_train_returns_metadata(tmp_path, monkeypatch):
 
 
 def test_score_table_returns_list_of_dicts(tmp_path, monkeypatch):
-    monkeypatch.setattr(ad, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
     monkeypatch.setattr(ad, "MIN_POINTS", 10)
     n = 60
     rc = _series(n)
@@ -139,7 +140,7 @@ def test_score_table_returns_list_of_dicts(tmp_path, monkeypatch):
 
 def test_score_table_detects_spike(tmp_path, monkeypatch):
     """A clear null_rate spike should produce at least one is_anomaly=1 point."""
-    monkeypatch.setattr(ad, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
     monkeypatch.setattr(ad, "MIN_POINTS", 10)
     n = 300
     spike_start, spike_end = 250, 270
@@ -154,7 +155,7 @@ def test_score_table_detects_spike(tmp_path, monkeypatch):
 
 def test_score_table_low_fpr_on_stable_data(tmp_path, monkeypatch):
     """On stable data, fewer than 5% of points should be flagged as anomalies."""
-    monkeypatch.setattr(ad, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
     monkeypatch.setattr(ad, "MIN_POINTS", 10)
     n = 300
     rc = _series(n, slope=10.0)
@@ -168,7 +169,7 @@ def test_score_table_low_fpr_on_stable_data(tmp_path, monkeypatch):
 
 def test_score_table_trains_on_demand_if_no_model(tmp_path, monkeypatch):
     """score_table should train automatically when no persisted model exists."""
-    monkeypatch.setattr(ad, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
     monkeypatch.setattr(ad, "MIN_POINTS", 10)
     n = 50
     rc = _series(n)
@@ -184,7 +185,7 @@ def test_score_table_trains_on_demand_if_no_model(tmp_path, monkeypatch):
 
 
 def test_retrain_all_counts(tmp_path, monkeypatch):
-    monkeypatch.setattr(ad, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(common, "MODELS_DIR", tmp_path)
     monkeypatch.setattr(ad, "MIN_POINTS", 10)
     tables = [{"table_name": "a"}, {"table_name": "b"}, {"table_name": "c"}]
     rc_long = _series(50)

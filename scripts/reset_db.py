@@ -18,8 +18,7 @@ import logging
 from sqlalchemy import text
 
 from app.metrics_storage import _apply_schema, get_engine
-from ml.anomaly_detector import MODELS_DIR as ANOMALY_MODELS_DIR
-from ml.forecast import MODELS_DIR as FORECAST_MODELS_DIR
+from ml import common
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +27,8 @@ def _clear_model_cache() -> None:
     # Stale joblibs were trained against the previous data shape. Clear both
     # forecast and anomaly models so the nightly jobs retrain from scratch.
     removed = 0
-    for models_dir in {FORECAST_MODELS_DIR, ANOMALY_MODELS_DIR}:
-        if not models_dir.exists():
-            continue
-        for path in models_dir.glob("*.joblib"):
+    if common.MODELS_DIR.exists():
+        for path in common.MODELS_DIR.glob("*.joblib"):
             path.unlink()
             removed += 1
     print(f"[*] cleared {removed} stale model(s)")
