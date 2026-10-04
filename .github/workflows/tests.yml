@@ -39,6 +39,7 @@ jobs:
         run: |
           coverage run -m pytest -v
           coverage report -m
+          poetry run coverage report --include="ml/*" --fail-under=80
           coverage xml
 
       - name: Upload coverage artifact
