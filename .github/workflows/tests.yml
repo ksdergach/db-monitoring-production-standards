@@ -4,6 +4,7 @@ on:
   push:
     branches: [master]
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -24,23 +25,25 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: pip
+
+      - name: Install Poetry
+        run: pipx install poetry==2.5.1
 
       - name: Install dependencies
-        run: |
-          python -m pip install -U pip
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
+        run: poetry sync --with dev
+
+      - name: Verify Python version
+        run: poetry run python -V
 
       - name: Run tests with coverage
         env:
           SECRET_KEY: test-secret
           DATABASE_URL: postgresql://test:test@localhost/test
         run: |
-          coverage run -m pytest -v
-          coverage report -m
+          poetry run coverage run -m pytest -v
+          poetry run coverage report -m
           poetry run coverage report --include="ml/*" --fail-under=80
-          coverage xml
+          poetry run coverage xml
 
       - name: Upload coverage artifact
         if: matrix.python-version == '3.12'
@@ -51,10 +54,9 @@ jobs:
           retention-days: 14
 
   # Integration tests (#44) — spin up real Postgres / MySQL / ClickHouse via
-  # testcontainers. Slow (~3–5 min total) so we only run them on push to
-  # master, not on every PR.
+  # testcontainers. Run after merging to master or manually on a PR branch.
   integration:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     needs: test
     steps:
@@ -64,25 +66,26 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
+
+      - name: Install Poetry
+        run: pipx install poetry==2.5.1
 
       - name: Install dependencies
-        run: |
-          python -m pip install -U pip
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
+        run: poetry sync --with dev,integration
+
+      - name: Verify Python version
+        run: poetry run python -V
 
       - name: Run integration tests
         env:
           SECRET_KEY: test-secret
           DATABASE_URL: postgresql://test:test@localhost/test
-        run: pytest -m integration -v --tb=short
+        run: poetry run pytest -m integration -v --tb=short
 
   # E2E dashboard tests (#45) — Playwright + headless Chromium drives the
-  # live Flask app. Master-only (skipped on PRs) for the same reason as the
-  # integration job: download + browser-driven flow is slow on every PR.
+  # live Flask app. Run after merging to master or manually on a PR branch.
   e2e:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     needs: test
     steps:
@@ -92,22 +95,24 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
+
+      - name: Install Poetry
+        run: pipx install poetry==2.5.1
 
       - name: Install dependencies
-        run: |
-          python -m pip install -U pip
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
+        run: poetry sync --with dev
+
+      - name: Verify Python version
+        run: poetry run python -V
 
       - name: Install Playwright browsers
-        run: playwright install --with-deps chromium
+        run: poetry run playwright install --with-deps chromium
 
       - name: Run E2E tests
         env:
           SECRET_KEY: test-secret
           DATABASE_URL: postgresql://test:test@localhost/test
-        run: pytest -m e2e -v --tb=short
+        run: poetry run pytest -m e2e -v --tb=short
 
       - name: Upload failure screenshots
         if: failure()
@@ -117,3 +122,67 @@ jobs:
           path: tests/e2e/_artifacts/
           if-no-files-found: ignore
           retention-days: 14
+
+  environment:
+    # Exercise onboarding and Docker from a fresh checkout with spaces/Cyrillic.
+    env:
+      # Compose requires an ASCII project name; the checkout name is Cyrillic.
+      COMPOSE_PROJECT_NAME: dbm-environment
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Свежий клон МО
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: Свежий клон МО
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: pipx install poetry==2.5.1
+
+      - name: Verify fresh installation
+        run: |
+          make install
+          test "$(poetry env info --path)" = "$PWD/.venv"
+          test -z "$(git status --porcelain)"
+          cp .env.example .env
+          make test-local
+
+      - name: Build and start the application
+        run: |
+          make server > /tmp/dbm-server.log 2>&1 &
+          server_pid=$!
+          for attempt in $(seq 1 180); do
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              cat /tmp/dbm-server.log
+              exit 1
+            fi
+            if curl --fail --silent http://localhost:5001/healthz; then
+              exit 0
+            fi
+            sleep 5
+          done
+          cat /tmp/dbm-server.log
+          exit 1
+
+      - name: Test inside Docker
+        run: make test ARGS="-q"
+
+      - name: Record image size
+        run: |
+          docker image inspect db-monitoring --format 'Image: {{.Os}}/{{.Architecture}}, {{.Size}} bytes' | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Show container logs
+        if: failure()
+        run: |
+          cat /tmp/dbm-server.log 2>/dev/null || true
+          docker compose logs --tail=100
+
+      - name: Stop validation containers
+        if: always()
+        run: docker compose down
