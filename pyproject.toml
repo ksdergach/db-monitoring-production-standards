@@ -103,7 +103,7 @@ markers = [
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-extend-exclude = ["venv", "models", "monitor.db"]
+extend-exclude = ["models", "monitor.db"]
 
 [tool.ruff.lint]
 select = [
@@ -128,7 +128,6 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["B", "SIM"]                # tests prioritize clarity over patterns
-"scripts/**" = ["T201"]                  # print() is fine in scripts
 
 [tool.ruff.lint.isort]
 known-first-party = ["app", "ml", "collectors", "scripts", "api"]
