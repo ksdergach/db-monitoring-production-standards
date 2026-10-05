@@ -17,26 +17,22 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import joblib
+
 from app.metrics_storage import get_changepoints, get_metrics
 from ml import common
 from ml.common import InsufficientDataError as InsufficientDataError
 from ml.settings import ml_settings
 
+# Tests switch Prophet off through _HAS_PROPHET to keep the linear path fast.
 try:  # pragma: no cover - optional heavy dep
     from prophet import Prophet
 
     _HAS_PROPHET = True
-except Exception:  # pragma: no cover
+except Exception as exc:  # pragma: no cover
+    logging.getLogger(__name__).warning("Prophet unavailable, using linear forecasts: %s", exc)
     Prophet = None
     _HAS_PROPHET = False
-
-try:  # pragma: no cover - optional dep
-    import joblib
-
-    _HAS_JOBLIB = True
-except Exception:  # pragma: no cover
-    joblib = None
-    _HAS_JOBLIB = False
 
 logger = logging.getLogger(__name__)
 
@@ -272,17 +268,14 @@ def train(table: str, metric: str = "row_count", project_id: str = "legacy") -> 
         "trained_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "last_value_override": last_value_override,
     }
-    if _HAS_JOBLIB:
-        try:
-            joblib.dump(payload, common.model_path("forecast", table, project_id, metric))
-        except Exception as e:  # pragma: no cover
-            logger.warning("Failed to persist model for %s/%s: %s", table, metric, e)
+    try:
+        joblib.dump(payload, common.model_path("forecast", table, project_id, metric))
+    except Exception as e:  # pragma: no cover
+        logger.warning("Failed to persist model for %s/%s: %s", table, metric, e)
     return {"kind": kind, "points": len(points), "span_days": span_days}
 
 
 def _load_persisted(table: str, metric: str, project_id: str = "legacy") -> dict | None:
-    if not _HAS_JOBLIB:
-        return None
     path = common.model_path("forecast", table, project_id, metric)
     if not path.exists():
         return None

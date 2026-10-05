@@ -1,9 +1,7 @@
 """Offline change-point detection on stored metric series.
 
 Wraps ``ruptures.Pelt`` with an RBF cost — robust to non-Gaussian noise, finds
-abrupt mean shifts (the typical ETL-bug or migration footprint). Falls back to
-a CUSUM-style scan implemented in pure NumPy when ``ruptures`` isn't installed,
-so the feature degrades gracefully.
+abrupt mean shifts (the typical ETL-bug or migration footprint).
 
 Each detection returns: ``ts`` (ISO breakpoint), ``score`` (mean shift in pre-
 window standard deviations — unitless, comparable across metrics), and
@@ -19,19 +17,12 @@ import statistics
 from collections.abc import Iterable
 from datetime import timedelta
 
+import numpy as np
+import ruptures as rpt
+
 from app.metrics_storage import get_metrics, save_changepoints
 from ml import common
 from ml.settings import ml_settings
-
-try:  # pragma: no cover - optional heavy dep
-    import numpy as np
-    import ruptures as rpt
-
-    _HAS_RUPTURES = True
-except Exception:  # pragma: no cover
-    np = None  # type: ignore[assignment]
-    rpt = None
-    _HAS_RUPTURES = False
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +67,7 @@ def _score(values: list[float], idx: int) -> tuple[float, float, float]:
 def _detrend(values: list[float]) -> list[float]:
     """Subtract the OLS linear fit. Used for cumulative metrics so PELT only
     sees the residual — abrupt shifts stand out, gradual growth is removed."""
-    if not _HAS_RUPTURES or len(values) < 2:
+    if len(values) < 2:
         return list(values)
     n = len(values)
     arr = np.asarray(values, dtype=float)
@@ -87,7 +78,7 @@ def _detrend(values: list[float]) -> list[float]:
 
 def _detect_pelt(values: list[float], detrend: bool = False) -> list[int]:
     """Return candidate breakpoint indices using ruptures' PELT/RBF."""
-    if not _HAS_RUPTURES or len(values) < MIN_POINTS:
+    if len(values) < MIN_POINTS:
         return []
     series = _detrend(values) if detrend else values
     arr = np.asarray(series, dtype=float).reshape(-1, 1)
@@ -95,34 +86,6 @@ def _detect_pelt(values: list[float], detrend: bool = False) -> list[int]:
     # ruptures returns segment END indices; the last one is len(values).
     bkps = [b for b in algo.predict(pen=ml_settings.CHANGEPOINT_PELT_PENALTY) if b < len(values)]
     return bkps
-
-
-def _detect_cusum(values: list[float]) -> list[int]:
-    """NumPy-free CUSUM fallback: scan for the index that maximises the
-    standardised mean shift, then iteratively look for additional shifts in
-    the residual segments. Crude, but enough to flag the seeded `orders`
-    null-rate spike when ruptures is missing.
-    """
-    n = len(values)
-    if n < MIN_POINTS:
-        return []
-    bkps: list[int] = []
-    queue: list[tuple[int, int]] = [(0, n)]
-    while queue:
-        lo, hi = queue.pop()
-        if hi - lo < 2 * MIN_SEGMENT:
-            continue
-        best_idx, best_score = -1, 0.0
-        for i in range(lo + MIN_SEGMENT, hi - MIN_SEGMENT):
-            score, _, _ = _score(values[lo:hi], i - lo)
-            if score > best_score:
-                best_idx, best_score = i, score
-        if best_idx < 0 or best_score < ml_settings.CHANGEPOINT_MIN_SCORE:
-            continue
-        bkps.append(best_idx)
-        queue.append((lo, best_idx))
-        queue.append((best_idx, hi))
-    return sorted(bkps)
 
 
 def detect_changepoints(
@@ -147,7 +110,7 @@ def detect_changepoints(
     values = [float(r["value"]) for r in rows]
 
     detrend = metric in _DETREND_METRICS
-    indices = _detect_pelt(values, detrend=detrend) if _HAS_RUPTURES else _detect_cusum(values)
+    indices = _detect_pelt(values, detrend=detrend)
 
     events: list[dict] = []
     for idx in indices:

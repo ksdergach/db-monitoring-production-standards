@@ -25,30 +25,15 @@ from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import joblib as _joblib
+import numpy as np
+from sklearn.ensemble import IsolationForest
+from sklearn.preprocessing import StandardScaler
+
 from app.metrics_storage import get_metrics
 from ml import common
 from ml.common import InsufficientDataError as InsufficientDataError
 from ml.settings import ml_settings
-
-try:
-    import numpy as np
-    from sklearn.ensemble import IsolationForest
-    from sklearn.preprocessing import StandardScaler
-
-    _HAS_SKLEARN = True
-except Exception:  # pragma: no cover
-    np = None  # type: ignore[assignment]
-    IsolationForest = None
-    StandardScaler = None
-    _HAS_SKLEARN = False
-
-try:
-    import joblib as _joblib
-
-    _HAS_JOBLIB = True
-except Exception:  # pragma: no cover
-    _joblib = None
-    _HAS_JOBLIB = False
 
 logger = logging.getLogger(__name__)
 
@@ -66,9 +51,6 @@ def _load_features(
     The first tick is dropped after computing deltas, so n_rows = aligned - 1.
     Raises InsufficientDataError when the result has fewer than MIN_POINTS rows.
     """
-    if not _HAS_SKLEARN:
-        raise ImportError("scikit-learn is required for anomaly detection")
-
     rc_rows = get_metrics(table, "row_count", project_id, window=window)
     nr_rows = get_metrics(table, "null_rate", project_id, window=window)
 
@@ -131,18 +113,15 @@ def train(table: str, project_id: str = "legacy") -> dict[str, Any]:
         "trained_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "n_points": len(timestamps),
     }
-    if _HAS_JOBLIB:
-        try:
-            _joblib.dump(payload, common.model_path("anomaly", table, project_id))
-        except Exception as exc:
-            logger.warning("Failed to persist anomaly model for %s: %s", table, exc)
+    try:
+        _joblib.dump(payload, common.model_path("anomaly", table, project_id))
+    except Exception as exc:
+        logger.warning("Failed to persist anomaly model for %s: %s", table, exc)
 
     return {"n_points": len(timestamps), "trained_at": payload["trained_at"]}
 
 
 def _load_model(table: str, project_id: str = "legacy") -> dict | None:
-    if not _HAS_JOBLIB:
-        return None
     path = common.model_path("anomaly", table, project_id)
     if not path.exists():
         return None

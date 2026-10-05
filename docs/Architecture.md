@@ -353,12 +353,11 @@ retrain_all()         — переобучение всех таблиц (выз
 
 **Ответственность:** обнаружение точек структурных изменений в метриках.
 
-**Алгоритмы (каскад):**
+**Алгоритм:**
 
 | Алгоритм | Библиотека | Применение |
 |---|---|---|
-| PELT (RBF kernel) | `ruptures` | Основной; работает при наличии `ruptures` |
-| CUSUM | pure Python | Fallback без зависимостей |
+| PELT (RBF kernel) | `ruptures` | Поиск точек изменения |
 
 **Детрендинг:** для кумулятивных метрик (`row_count`, `size_bytes`) применяется детрендинг перед поиском изменений — иначе монотонный рост сам по себе даёт false positive.
 
@@ -1056,14 +1055,9 @@ save_anomaly_scores([{ts, table_name, score, is_anomaly}])
   values = values - линейный тренд
            │
            ▼
-Попытка PELT (ruptures):
+PELT (ruptures):
   model = ruptures.Pelt(model='rbf')
   breakpoints = model.fit_predict(values, pen=penalty)
-           │ если ruptures недоступен
-           ▼
-Fallback CUSUM (pure Python):
-  кумулятивная сумма отклонений от среднего
-  порог: 3σ
            │
            ▼
 Для каждого breakpoint:
@@ -1123,7 +1117,7 @@ CREATE INDEX idx_metrics_metric_ts ON metrics (metric_name, ts);
 
 ### Таблица `changepoints`
 
-Обнаруженные точки изменения тренда (PELT/CUSUM). Записывает ежечасовой job.
+Обнаруженные точки изменения тренда (PELT). Записывает ежечасовой job.
 
 ```sql
 CREATE TABLE changepoints (
@@ -1350,9 +1344,9 @@ Prophet обеспечивает надёжный прогноз для табл
 
 Unsupervised алгоритм: не требует разметки аномалий. Хорошо работает на 4-мерном пространстве признаков (`row_count, null_rate, Δrow_count, Δnull_rate`). Параметр `contamination=0.01` задаёт ≈1% ложноположительных на обучающих данных — консервативный порог для продуктивной среды. `decision_function` возвращает непрерывную оценку, позволяющую ранжировать аномалии по тяжести.
 
-### ruptures (PELT) + CUSUM fallback
+### ruptures (PELT)
 
-PELT (Pruned Exact Linear Time) — оптимальный алгоритм для точного поиска breakpoints в ряду произвольной длины за O(n log n). Используется с RBF-ядром для захвата нелинейных изменений. CUSUM — чистый Python fallback для окружений, где `ruptures` недоступен.
+PELT (Pruned Exact Linear Time) — оптимальный алгоритм для точного поиска breakpoints в ряду произвольной длины за O(n log n). Используется с RBF-ядром для захвата нелинейных изменений.
 
 ### scikit-learn + joblib
 
