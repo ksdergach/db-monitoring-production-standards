@@ -5,131 +5,109 @@
 оценивает метрики, куда попадают результаты и как ими пользуется инженер данных.
 
 Схема описывает фактическую реализацию (сверено с кодом ветки на коммите
-`e65485b`). Это BPMN-подобная диаграмма Mermaid `flowchart`, а не исполняемая
+`6494ba6`). Это BPMN-подобная диаграмма Mermaid `flowchart`, а не исполняемая
 BPMN-модель. Технические детали, которые не нужны для понимания роли модели,
 вынесены в [раздел 6](#6-особенности-фактической-реализации).
 
 ## Схема
 
 ```mermaid
-flowchart LR
-    subgraph COL["Сборщик метрик"]
-        direction TB
-        s_tick(("Таймер подключения:<br/>каждые 5–1440 мин"))
-        t_collect("Собрать метрики таблиц")
-        ds_metrics[("metrics")]
-        g_ok{"Сбор успешен и<br/>метрики записаны?"}
-        e_noscore((("Тик завершён без<br/>оценки и дрейфа")))
-        g_tg{"Telegram настроен<br/>в проекте?"}
-        t_drift("Пересчитать дрейф<br/>распределений: PSI, KS")
-        ds_drift[("drift_reports")]
-        e_drift((("Тик завершён")))
-    end
+flowchart TB
+    s_tick(("Таймер сбора"))
+    t_collect("Сборщик: собрать<br/>и записать метрики")
+    g_ok{"Метрики<br/>записаны?"}
+    e_skip((("Тик без<br/>оценки")))
+    g_tg{"Telegram<br/>настроен?"}
+    t_load("Isolation Forest: загрузить<br/>модель или обучить")
+    g_ready{"Модель<br/>готова?"}
+    t_score("Isolation Forest:<br/>оценить точки за день")
+    g_anom{"Аномалия<br/>прошла фильтр?"}
+    t_send("Приложение:<br/>уведомить в Telegram")
+    g_join(("Оценка<br/>завершена"))
+    t_drift("Сборщик: рассчитать<br/>дрейф PSI/KS")
+    t_review("Инженер: разобрать<br/>аномалии и дрейф")
+    t_retrain("Isolation Forest:<br/>переобучить, оценить 14 дней")
+    ds_scores[("Оценки<br/>аномалий")]
+    s_night(("Ночью<br/>в 04:00"))
+    s_open(("Инженер<br/>открывает панель"))
+    ds_drift[("Отчёты<br/>о дрейфе")]
 
-    subgraph ML["ML-модель (Isolation Forest)"]
-        direction TB
-        g_model{"Модель таблицы<br/>сохранена?"}
-        g_hist{"История ≥ 200 точек<br/>за 60 дней?"}
-        t_train("Обучить модель<br/>на истории из metrics")
-        ds_model[("Файл модели<br/>таблицы")]
-        t_score("Оценить точки за 1 день<br/>и записать оценки")
-        ds_scores[("anomaly_scores")]
-        s_night(("Таймер:<br/>ежедневно 04:00"))
-        t_retrain("Переобучить модели<br/>всех таблиц с метриками")
-        t_rescore("Повторно оценить<br/>точки за 14 дней")
-        e_night((("Оценки обновлены")))
-    end
-
-    subgraph APP["Приложение"]
-        direction TB
-        g_anom{"Есть точки<br/>с аномалией?"}
-        g_filter{"Последняя аномалия<br/>проходит фильтр<br/>уведомлений?"}
-        t_send("Отправить уведомление<br/>в Telegram")
-        g_join{"Оперативная<br/>оценка завершена"}
-        t_panel("Показать панель:<br/>метки аномалий, дрейф")
-    end
-
-    subgraph ENG["Инженер данных"]
-        direction TB
-        s_open(("Открыть панель:<br/>по уведомлению<br/>или самостоятельно"))
-        t_analyze("Проанализировать<br/>аномалию")
-        g_decide{"Реальная<br/>проблема данных?"}
-        t_fix("Устранить причину<br/>в источнике данных")
-        e_done((("Разбор завершён")))
-    end
-
-    %% Основной процесс: тик сбора одного подключения
+    %% Тик сбора одного подключения
     s_tick --> t_collect --> g_ok
-    g_ok -- "нет" --> e_noscore
+    g_ok -- "нет" --> e_skip
     g_ok -- "да" --> g_tg
     g_tg -- "нет" --> t_drift
-    t_drift --> e_drift
-    g_tg -- "да" --> g_model
-
-    %% Оперативная оценка таблицы
-    g_model -- "да" --> t_score
-    g_model -- "нет" --> g_hist
-    g_hist -- "да" --> t_train --> t_score
-    g_hist -- "нет" --> g_join
-    t_score --> g_anom
+    g_tg -- "да" --> t_load --> g_ready
+    g_ready -- "нет: мало истории" --> g_join
+    g_ready -- "да" --> t_score --> g_anom
     g_anom -- "нет" --> g_join
-    g_anom -- "да" --> g_filter
-    g_filter -- "нет" --> g_join
-    g_filter -- "да" --> t_send --> g_join
+    g_anom -- "да" --> t_send --> g_join
     g_join --> t_drift
 
-    %% Отдельный процесс: ночное переобучение
-    s_night --> t_retrain --> t_rescore --> e_night
-
-    %% Работа инженера
+    %% Уведомление, панель, ночной процесс и данные
     t_send -. "сообщение" .-> s_open
-    s_open --> t_panel --> t_analyze --> g_decide
-    g_decide -- "да" --> t_fix --> e_done
-    g_decide -- "нет" --> e_done
-
-    %% Данные (пунктир)
-    t_collect -.-> ds_metrics
-    t_drift -.-> ds_drift
-    t_train -.-> ds_model
-    t_retrain -.-> ds_model
-    ds_model -.-> t_score
+    ds_scores -.-> t_review
+    ds_drift -.-> t_review
+    s_open --> t_review
+    s_night --> t_retrain -.-> ds_scores
     t_score -.-> ds_scores
-    t_rescore -.-> ds_scores
-    ds_scores -.-> t_panel
-    ds_drift -.-> t_panel
+    t_drift -.-> ds_drift
 
     classDef event fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
     classDef endEvent fill:#ffebee,stroke:#c62828,color:#b71c1c
     classDef task fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+    classDef model fill:#ede7f6,stroke:#4527a0,color:#311b92,stroke-width:2px
     classDef gateway fill:#fff8e1,stroke:#f9a825,color:#5d4037
+    classDef merge fill:#eceff1,stroke:#546e7a,color:#263238
     classDef store fill:#f3e5f5,stroke:#6a1b9a,color:#4a148c
 
     class s_tick,s_night,s_open event
-    class e_noscore,e_drift,e_night,e_done endEvent
-    class t_collect,t_drift,t_train,t_score,t_retrain,t_rescore,t_send,t_panel,t_analyze,t_fix task
-    class g_ok,g_tg,g_model,g_hist,g_anom,g_filter,g_join,g_decide gateway
-    class ds_metrics,ds_drift,ds_model,ds_scores store
+    class e_skip endEvent
+    class t_collect,t_send,t_drift,t_review task
+    class t_load,t_score,t_retrain model
+    class g_ok,g_tg,g_ready,g_anom gateway
+    class g_join merge
+    class ds_scores,ds_drift store
 ```
+
+Схема читается сверху вниз. Основной столбец — тик сбора одного подключения;
+короткие боковые ветви — альтернативные исходы, ночное переобучение и работа
+инженера с панелью.
 
 ### Условные обозначения
 
 | Элемент | Значение |
 |---|---|
 | Круг, зелёный | Стартовое событие: таймер сбора, ночной таймер или решение инженера открыть панель |
-| Двойной круг, красный | Завершающее событие ветви процесса |
-| Прямоугольник со скруглением | Задача |
-| Ромб с вопросом | Исключающая развилка: выполняется ровно одна ветвь |
-| Ромб без вопроса («Оперативная оценка завершена») | Слияние: сюда сходятся все исходы оценки, после чего процесс продолжается одной веткой |
-| Цилиндр | Хранилище данных (таблицы `monitor.db` и файл модели) |
+| Двойной круг, красный | Тик завершён без оценки и без расчёта дрейфа |
+| Серый круг «Оценка завершена» | Слияние: сюда сходятся все исходы оперативной оценки, дальше процесс идёт одной веткой |
+| Ромб | Исключающая развилка: выполняется ровно одна ветвь («да» или «нет») |
+| Прямоугольник, синий | Задача; перед двоеточием указан участник (сборщик, приложение, инженер) |
+| Прямоугольник, фиолетовый с жирной рамкой | Задача модели Isolation Forest |
+| Цилиндр | Хранилище: оценки аномалий (`anomaly_scores`) и отчёты о дрейфе (`drift_reports`) в `monitor.db` |
 | Сплошная стрелка | Последовательность действий |
 | Пунктир без подписи | Запись или чтение данных |
 | Пунктир «сообщение» | Уведомление Telegram, передаваемое инженеру |
-| Дорожка (рамка) | Участник процесса: сборщик, модель, приложение, инженер |
 
-На схеме три независимых стартовых события. Тик сбора и ночное переобучение
-запускает планировщик APScheduler; панель открывает инженер. Ночное
-переобучение не продолжает тик сбора, а чтение панели не запускает ни обучение,
-ни оценку.
+Как читать схему:
+
+- **Тик сбора.** Если метрики не записаны (ошибка сбора или ноль строк), тик
+  заканчивается без оценки и без дрейфа. Иначе проверяется Telegram: без него
+  оперативная оценка пропускается, и процесс сразу переходит к дрейфу.
+- **Оперативная оценка.** Сохранённая модель таблицы загружается; если её
+  нет, модель обучается при истории не меньше 200 точек, иначе таблица
+  пропускается («мало истории»). Оценки записываются в
+  хранилище сразу, до фильтра уведомлений.
+- **Дрейф.** Расчёт PSI/KS выполняется после блока оценки при любом его
+  исходе, в том числе когда Telegram не настроен.
+- **Ночное переобучение** — отдельный процесс со своим таймером: обновляет
+  модели и оценки, но не проверяет Telegram и не отправляет уведомлений.
+- **Панель.** Инженер открывает её по уведомлению или самостоятельно; чтение
+  панели не запускает ни обучение, ни оценку. Решение инженера (реальная
+  проблема или ложное срабатывание) в системе не сохраняется.
+
+Записи в таблицу `metrics` и в файл модели таблицы на схеме не показаны, чтобы
+не перегружать её стрелками; они описаны в разделах 2–4.
 
 ## 1. Назначение модели в процессе мониторинга
 
@@ -246,16 +224,18 @@ Isolation Forest ищет необычные состояния таблицы �
 
 | Элемент схемы | Код |
 |---|---|
-| Таймер подключения, сбор, запись в `metrics` | `add_job_for_connection`, `collect_for_connection`, `save_metrics` — `collectors/per_project.py` |
-| «Сбор успешен и метрики записаны?» | `run_status != "failed"` и `rows_saved > 0` в `collect_for_connection` |
-| «Telegram настроен?» | `_maybe_notify_anomalies` → `load_project_telegram_config` (`app/notifications/telegram.py`) |
-| Пересчёт дрейфа | `_refresh_drift_cache` → `compute_and_store_drift_all` (`ml/drift.py`) |
-| Модель сохранена / обучение / оценка | `score_table`, `train`, `_load_model` — `ml/anomaly_detector.py` |
-| Запись оценок | `save_anomaly_scores` в `_maybe_notify_anomalies` и `retrain_anomaly_detectors` |
-| Фильтр уведомлений | `_passes_alert_quality_gate` — `collectors/per_project.py`; пороги в `app/config.py` |
-| Отправка в Telegram | `notify_anomaly` — `app/notifications/telegram.py` |
-| Ночной таймер, переобучение, оценка за 14 дней | `start_scheduler`, `retrain_anomaly_detectors` — `collectors/scheduler.py`; `retrain_all` — `ml/anomaly_detector.py` |
-| Панель | `app/dashboard.py`, `/api/anomalies`, `/api/drift`, `/api/explain` — `app/api.py` |
+| «Таймер сбора», «Сборщик: собрать и записать метрики» | `add_job_for_connection`, `collect_for_connection`, `save_metrics` — `collectors/per_project.py` |
+| «Метрики записаны?» | `run_status != "failed"` и `rows_saved > 0` в `collect_for_connection` |
+| «Telegram настроен?» (без него оперативная оценка пропускается) | `_maybe_notify_anomalies` → `load_project_telegram_config` (`app/notifications/telegram.py`) |
+| «Сборщик: рассчитать дрейф PSI/KS», «Отчёты о дрейфе» | `_refresh_drift_cache` → `compute_and_store_drift_all` (`ml/drift.py`) |
+| «Isolation Forest: загрузить модель или обучить», «Модель готова?» (нет — при отсутствии модели и истории < 200 точек), «…оценить точки за день» | `score_table`, `train`, `_load_model` — `ml/anomaly_detector.py` |
+| «Оценки аномалий» (запись до фильтра) | `save_anomaly_scores` в `_maybe_notify_anomalies` и `retrain_anomaly_detectors` |
+| «Аномалия прошла фильтр?» (есть аномалия и последняя проходит фильтр) | `_passes_alert_quality_gate` — `collectors/per_project.py`; пороги в `app/config.py` |
+| «Приложение: уведомить в Telegram» | `notify_anomaly` — `app/notifications/telegram.py` |
+| «Ночью в 04:00», «Isolation Forest: переобучить, оценить 14 дней» | `start_scheduler`, `retrain_anomaly_detectors` — `collectors/scheduler.py`; `retrain_all` — `ml/anomaly_detector.py` |
+| «Инженер открывает панель», «Инженер: разобрать аномалии и дрейф» | `app/dashboard.py`, `/api/anomalies`, `/api/drift`, `/api/explain` — `app/api.py` |
 
 Фильтр уведомлений физически реализован в модуле сборщика, но на схеме
-отнесён к дорожке «Приложение», так как относится к логике уведомлений.
+отнесён к приложению, так как относится к логике уведомлений. Развилка
+«Аномалия прошла фильтр?» объединяет две проверки кода: есть ли в окне
+аномалии и проходит ли последняя из них фильтр (раздел 5).
