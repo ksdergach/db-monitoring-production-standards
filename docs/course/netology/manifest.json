@@ -1,0 +1,57 @@
+[
+  {
+    "course": "business",
+    "title": "В01. Автоматизация MLOps",
+    "path": "docs/course/netology/presentations/В01_Автоматизация_MLOps.pdf",
+    "source": "https://netology.ru/profile/program/bhemai-25-bpmo-3/lessons/661299/lesson_items/3572978",
+    "downloaded_filename": "Автоматизация_MLOps_1.pdf",
+    "sha256": "e4a2c8e2abf82770a9ff537a853ec1f7bba4502aa8cf329785decd74b60937f4",
+    "bytes": 1861404,
+    "checked_on": "2026-10-21",
+    "pages": 14
+  },
+  {
+    "course": "business",
+    "title": "В02. Автоматизация MLOps",
+    "path": "docs/course/netology/presentations/В02_Автоматизация_MLOps.pdf",
+    "source": "https://netology.ru/profile/program/bhemai-25-bpmo-3/lessons/664064/lesson_items/3572980",
+    "downloaded_filename": "Автоматизация_MLOps_2.pdf",
+    "sha256": "1ce898eb59c10977ef8c4c0ef9ff5fae7b16567e2cdb629cd7a3dc4c224373e8",
+    "bytes": 2424654,
+    "checked_on": "2026-10-21",
+    "pages": 71
+  },
+  {
+    "course": "business",
+    "title": "В03. Оркестрация контейнеров",
+    "path": "docs/course/netology/presentations/В03_Оркестрация_контейнеров.pdf",
+    "source": "https://netology.ru/profile/program/bhemai-25-bpmo-3/lessons/665645/lesson_items/3578923",
+    "downloaded_filename": "Avtomatizatsia_MLOps_3.pdf",
+    "sha256": "55ef5119cd83ffca8fa0e3b59dc9fbaa1517aa66ed8b1da09d1ba1015c4031c6",
+    "bytes": 1722564,
+    "checked_on": "2026-10-21",
+    "pages": 28
+  },
+  {
+    "course": "business",
+    "title": "В04. ModelOps как надмножество MLOps",
+    "path": "docs/course/netology/presentations/В04_ModelOps.pdf",
+    "source": "https://netology.ru/profile/program/bhemai-25-bpmo-3/lessons/668521/lesson_items/3606544",
+    "downloaded_filename": "4_ModelOps-kak-nadmnozhestvo-MLOps.pdf",
+    "sha256": "c349ef95238f19864bbd9dff01e92ab1900b065df1ff0e270a7a5343cf27ce1d",
+    "bytes": 3253325,
+    "checked_on": "2026-10-21",
+    "pages": 35
+  },
+  {
+    "course": "business",
+    "title": "В05. BPMN и оркестрация жизненного цикла моделей",
+    "path": "docs/course/netology/presentations/В05_BPMN_жизненного_цикла.pdf",
+    "source": "https://netology.ru/profile/program/bhemai-25-bpmo-3/lessons/668522/lesson_items/3606547",
+    "downloaded_filename": "5_BPMN-i-Orkestraciya-zhiznennogo-cikla-modelej.pdf",
+    "sha256": "784fd73afeb6e68f80b8bdd86da1444e90d974b12d19350eef49f71465214380",
+    "bytes": 2585202,
+    "checked_on": "2026-10-21",
+    "pages": 35
+  }
+]
