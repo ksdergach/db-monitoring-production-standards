@@ -103,6 +103,7 @@ CREATE INDEX IF NOT EXISTS idx_drift_reports_project_ts
     ON drift_reports (project_id, computed_at DESC);
 
 CREATE TABLE IF NOT EXISTS llm_explanations (
+    project_id    TEXT NOT NULL,
     table_name    TEXT NOT NULL,
     metric        TEXT NOT NULL,
     ts            TIMESTAMPTZ NOT NULL,
@@ -110,7 +111,7 @@ CREATE TABLE IF NOT EXISTS llm_explanations (
     suggested_fix TEXT NOT NULL,
     confidence    DOUBLE PRECISION NOT NULL,
     created_at    TIMESTAMPTZ NOT NULL,
-    PRIMARY KEY (table_name, metric, ts)
+    PRIMARY KEY (project_id, table_name, metric, ts)
 );
 
 CREATE TABLE IF NOT EXISTS telegram_throttle (

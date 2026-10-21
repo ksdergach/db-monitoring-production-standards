@@ -104,6 +104,7 @@ CREATE INDEX IF NOT EXISTS idx_drift_reports_project_ts
 -- LLM-generated root-cause explanations — cached to avoid repeated NIM calls.
 -- TTL is 24 h, checked at read time via created_at.
 CREATE TABLE IF NOT EXISTS llm_explanations (
+    project_id    TEXT NOT NULL,
     table_name    TEXT NOT NULL,
     metric        TEXT NOT NULL,
     ts            TEXT NOT NULL,
@@ -111,7 +112,7 @@ CREATE TABLE IF NOT EXISTS llm_explanations (
     suggested_fix TEXT NOT NULL,
     confidence    REAL NOT NULL,
     created_at    TEXT NOT NULL,
-    PRIMARY KEY (table_name, metric, ts)
+    PRIMARY KEY (project_id, table_name, metric, ts)
 );
 
 -- Throttle table for Telegram notifications (#143 multi-tenant).
