@@ -427,6 +427,37 @@ make timescale-down                                 # остановить
 
 Тот же `app.metrics_storage` работает на обоих бэкендах через единый интерфейс — переключение управляется только DSN. На plain Postgres (без расширения) тоже работает: `CREATE EXTENSION timescaledb` и `create_hypertable` пропускаются, остаётся обычная таблица с DELETE-retention.
 
+### Кэш объяснений и обновление существующих БД (#55)
+
+Ключ `llm_explanations` — `(project_id, table_name, metric, ts)`. API определяет
+проект из серверного контекста и проверяет доступность таблицы до чтения кэша.
+`project_id` из JSON или query string не меняет выбранный проект. TTL — 24 часа;
+ответ по-прежнему содержит `explanation`, `suggested_fix`, `confidence`.
+
+При первом обращении к хранилищу штатная инициализация автоматически обновляет
+старую схему SQLite и PostgreSQL/TimescaleDB. Общий кэш без `project_id` удаляется:
+его владельца невозможно установить. Объяснения будут созданы заново по запросу.
+Остальные таблицы сохраняются. Изменение таблицы кэша выполняется в транзакции;
+повторная инициализация сохраняет записи с новым ключом.
+
+При переносе SQLite → TimescaleDB старый общий кэш пропускается целиком, а записи
+с `project_id` переносятся с исходным проектом. Повторный перенос обновляет запись
+только внутри её проекта. `--reset` очищает append-таблицы, но сохраняет целевой
+кэш объяснений, в том числе при пропуске старого исходного кэша.
+
+Проверки кэша на SQLite и настоящем TimescaleDB:
+
+```bash
+poetry run pytest tests/test_explanation_cache.py tests/test_llm.py
+poetry run pytest -m integration tests/integration/test_explanation_cache_timescale.py tests/integration/test_metrics_storage_timescale.py
+```
+
+По умолчанию интеграционные проверки запускают TimescaleDB через testcontainers.
+Для уже запущенного **тестового** сервера можно задать `TEST_TIMESCALE_URL`.
+Набор `test_explanation_cache_timescale.py` требует прав `CREATE DATABASE` и создаёт
+отдельную временную БД для каждого теста; `test_metrics_storage_timescale.py`
+пересоздаёт таблицы в БД из URL. Используйте отдельную БД только для тестов.
+
 ---
 
 ## Поддерживаемые СУБД
