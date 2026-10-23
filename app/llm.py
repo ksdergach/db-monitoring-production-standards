@@ -1,7 +1,7 @@
 """LLM root-cause explanation via NVIDIA NIM (#36).
 
-explain_anomaly(table, metric, ts) is the public entry point.
-It checks the cache first, calls NIM if needed, falls back to rule-based
+explain_anomaly(table, metric, ts, project_id) is the public entry point.
+The API handles caching. This module calls NIM and falls back to rule-based
 explanations when NIM is unavailable.
 """
 
@@ -86,7 +86,7 @@ def _format_history_block(
 
 
 def _build_prompt(table: str, metric: str, ts: str, project_id: str = "legacy") -> str:
-    schema = get_schema_snapshot(table) or []
+    schema = get_schema_snapshot(table, project_id=project_id) or []
     schema_text = (
         ", ".join(f"{c['name']} {c['type']}{'?' if c.get('nullable') else ''}" for c in schema)
         or "unknown"
