@@ -261,8 +261,10 @@ def _score_recent_anomalies() -> None:
 
 
 def _iter_retrain_projects() -> list[str]:
-    """Project ids that need ML retraining: any project with metric rows
-    plus ``'legacy'`` for back-compat with single-tenant setups."""
+    """Проекты для ML по сохранённым метрикам (переобучение и точки излома).
+
+    ``legacy`` добавляется для совместимости с однобазовым режимом.
+    """
     from app.metrics_storage import list_project_ids_with_metrics
 
     ids = list_project_ids_with_metrics()
@@ -295,15 +297,26 @@ def retrain_forecasts() -> None:
 def detect_changepoints() -> None:
     from app.metrics_storage import list_metric_tables
     from app.notifications.telegram import load_project_telegram_config, notify_changepoint
+    from app.security import scrub_value
     from ml.changepoint import detect_all
 
     logger.info("Job %s started", CHANGEPOINT_JOB_ID)
 
-    project_ids = _iter_notification_projects()
+    project_ids = _iter_retrain_projects()
     total_detected = 0
     for project_id in project_ids:
-        tables = list_metric_tables(project_id) or (None if project_id == "legacy" else [])
-        counts = detect_all(project_id=project_id, tables=tables)
+        try:
+            tables = list_metric_tables(project_id)
+            if not tables and project_id != "legacy":
+                continue
+            # Только legacy может читать таблицы из глобального источника.
+            # detect_all сохраняет события до обращения к настройкам Telegram.
+            counts = detect_all(project_id=project_id, tables=tables or None)
+        except Exception as exc:
+            logger.warning(
+                "[project=%s] changepoint analysis failed: %s", project_id, scrub_value(exc)
+            )
+            continue
         total_detected += counts.get("detected", 0)
         logger.debug(
             "[project=%s] changepoints: detected=%d tables=%d errors=%d",
@@ -313,7 +326,15 @@ def detect_changepoints() -> None:
             counts["errors"],
         )
 
-        cfg = load_project_telegram_config(project_id)
+        try:
+            cfg = load_project_telegram_config(project_id)
+        except Exception as exc:
+            logger.warning(
+                "[project=%s] changepoint Telegram config failed: %s",
+                project_id,
+                scrub_value(exc),
+            )
+            continue
         if cfg is None:
             continue
         bot_token, chat_id, throttle = cfg
@@ -334,7 +355,7 @@ def detect_changepoints() -> None:
                 logger.warning(
                     "[project=%s] changepoint notification failed: %s",
                     project_id,
-                    exc,
+                    scrub_value(exc),
                 )
 
     logger.info(
