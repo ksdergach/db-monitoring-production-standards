@@ -52,11 +52,6 @@ flowchart TB
     night -.->|Обновить оценки| results
     results -.->|Чтение| engineer
     operational -.->|Сигнал Telegram| engineer
-    style operational fill:#f8fafc,stroke:#64748b
-    style control fill:#ffffff,stroke:#cbd5e1
-    style detail fill:#eff6ff,stroke:#93c5fd
-    style night fill:#f5f3ff,stroke:#a78bfa
-    style engineer fill:#f0fdf4,stroke:#86efac
 ```
 
 **Как читать схему.** В области **А** слева показан сбор и единственный цикл
