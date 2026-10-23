@@ -21,6 +21,7 @@ import numpy as np
 import ruptures as rpt
 
 from app.metrics_storage import get_metrics, save_changepoints
+from app.security import scrub_value
 from ml import common
 from ml.settings import ml_settings
 
@@ -205,14 +206,20 @@ def detect_all(
                 events = detect_changepoints(
                     name, m, window_days=window_days, project_id=project_id
                 )
-            except Exception as e:  # pragma: no cover - defensive
-                logger.exception("changepoint detection failed for %s/%s: %s", name, m, e)
+                if events:
+                    new_events = save_changepoints(events, project_id=project_id)
+                    counts["detected"] += len(new_events)
+                    counts["events"].extend(new_events)
+            except Exception as exc:
+                logger.warning(
+                    "[project=%s] changepoint analysis/storage failed for %s/%s: %s",
+                    project_id,
+                    name,
+                    m,
+                    scrub_value(exc),
+                )
                 counts["errors"] += 1
                 continue
-            if events:
-                new_events = save_changepoints(events, project_id=project_id)
-                counts["detected"] += len(new_events)
-                counts["events"].extend(new_events)
     logger.info(
         "Change-point sweep complete: %s", {k: v for k, v in counts.items() if k != "events"}
     )
