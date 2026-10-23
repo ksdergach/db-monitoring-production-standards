@@ -18,6 +18,10 @@ before loading.
 append tables, which takes an `ACCESS EXCLUSIVE` lock. Take the app offline
 before running with ``--reset`` to avoid blocking writers.
 
+Кэш llm_explanations переносится только при наличии project_id в источнике.
+Старый общий кэш пропускается без подстановки legacy и без очистки целевого
+кэша. --reset очищает только append-таблицы и не затрагивает объяснения.
+
 Usage:
     python -m scripts.migrate_metrics_to_timescale \\
         --source sqlite:///monitor.db \\
@@ -33,7 +37,7 @@ from datetime import UTC, datetime
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
-# Tables with a primary key — safe to re-run thanks to ON CONFLICT DO NOTHING.
+# Tables with a primary key — safe to re-run thanks to ON CONFLICT DO UPDATE.
 _KEYED_TABLES: dict[str, tuple[list[str], list[str]]] = {
     "changepoints": (
         [
@@ -71,8 +75,17 @@ _KEYED_TABLES: dict[str, tuple[list[str], list[str]]] = {
         ["project_id", "table_name", "column_name"],
     ),
     "llm_explanations": (
-        ["table_name", "metric", "ts", "explanation", "suggested_fix", "confidence", "created_at"],
-        ["table_name", "metric", "ts"],
+        [
+            "project_id",
+            "table_name",
+            "metric",
+            "ts",
+            "explanation",
+            "suggested_fix",
+            "confidence",
+            "created_at",
+        ],
+        ["project_id", "table_name", "metric", "ts"],
     ),
     "telegram_throttle": (
         ["project_id", "table_name", "event_key", "last_sent_at"],
@@ -140,9 +153,12 @@ def _select(src: Engine, table: str, columns: list[str]) -> Iterable[dict]:
 
     project_id is substituted with 'legacy' when absent — the column was added
     in a later migration and old SQLite sources default to the legacy tenant.
+    llm_explanations без project_id пропускается: владелец общего кэша неизвестен.
     Any other missing column raises immediately to surface schema incompatibility.
     """
     present = _source_columns(src, table)
+    if table == "llm_explanations" and "project_id" not in present:
+        return
     missing = [c for c in columns if c not in present and c != "project_id"]
     if missing:
         raise ValueError(
@@ -230,15 +246,19 @@ def _apply_destination_schema(target_url: str) -> None:
     from app.config import settings as app_settings
 
     original = app_settings.MONITOR_DB_URL
+    original_engine = metrics_storage._engine
+    original_initialized = metrics_storage._initialized
     app_settings.MONITOR_DB_URL = target_url
     metrics_storage._engine = None
     metrics_storage._initialized = False
     try:
         metrics_storage.get_engine()
     finally:
+        if metrics_storage._engine is not None:
+            metrics_storage._engine.dispose()
         app_settings.MONITOR_DB_URL = original
-        metrics_storage._engine = None
-        metrics_storage._initialized = False
+        metrics_storage._engine = original_engine
+        metrics_storage._initialized = original_initialized
 
 
 def migrate(source_url: str, target_url: str, *, reset_append: bool = False) -> dict[str, int]:
