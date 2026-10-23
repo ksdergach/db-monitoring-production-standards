@@ -21,14 +21,18 @@ shifts with every request.
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any
 
 import joblib as _joblib
 import numpy as np
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
+from sklearn.utils.validation import check_is_fitted
 
 from app.metrics_storage import get_metrics
 from ml import common
@@ -39,6 +43,46 @@ logger = logging.getLogger(__name__)
 
 
 FEATURE_NAMES = ("row_count", "null_rate", "d_row_count", "d_null_rate")
+
+
+def _validate_artifact(payload: Any) -> None:
+    """Check the saved artifact's contract, not the model's predictive quality."""
+    if not isinstance(payload, dict) or not {"model", "scaler", "trained_at", "n_points"}.issubset(
+        payload
+    ):
+        raise ValueError("incomplete anomaly model artifact")
+    model, scaler = payload["model"], payload["scaler"]
+    if not isinstance(model, IsolationForest) or not isinstance(scaler, StandardScaler):
+        raise ValueError("invalid anomaly model or scaler")
+    check_is_fitted(model)
+    check_is_fitted(scaler)
+    if model.n_features_in_ != len(FEATURE_NAMES) or scaler.n_features_in_ != len(FEATURE_NAMES):
+        raise ValueError("invalid anomaly model feature count")
+    if type(payload["n_points"]) is not int or payload["n_points"] <= 0:
+        raise ValueError("invalid anomaly model training count")
+    if not isinstance(payload["trained_at"], str):
+        raise ValueError("invalid anomaly model training timestamp")
+    datetime.fromisoformat(payload["trained_at"])
+
+
+def _persist_model(payload: dict[str, Any], path: Path) -> None:
+    """Publish a checked artifact atomically without overwriting a live file in place."""
+    temporary_path: Path | None = None
+    try:
+        # Same directory keeps replace on one filesystem. Each writer owns its
+        # temporary file; readers continue loading the previous complete model.
+        with NamedTemporaryFile(
+            dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", delete=False
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+            _joblib.dump(payload, temporary)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        _validate_artifact(_joblib.load(temporary_path))
+        temporary_path.replace(path)
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
 
 
 def _load_features(
@@ -83,7 +127,8 @@ def train(table: str, project_id: str = "legacy") -> dict[str, Any]:
     """Fit and persist an anomaly-detection model for *table*.
 
     Returns metadata dict: {n_points, trained_at}.
-    Raises InsufficientDataError when history is too short.
+    Raises InsufficientDataError when history is too short. Persistence errors
+    propagate; metadata is returned only after a checked artifact is published.
     """
     timestamps, X = _load_features(
         table, window=timedelta(days=ml_settings.ANOMALY_TRAIN_WINDOW_DAYS), project_id=project_id
@@ -113,10 +158,7 @@ def train(table: str, project_id: str = "legacy") -> dict[str, Any]:
         "trained_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "n_points": len(timestamps),
     }
-    try:
-        _joblib.dump(payload, common.model_path("anomaly", table, project_id))
-    except Exception as exc:
-        logger.warning("Failed to persist anomaly model for %s: %s", table, exc)
+    _persist_model(payload, common.model_path("anomaly", table, project_id))
 
     return {"n_points": len(timestamps), "trained_at": payload["trained_at"]}
 
