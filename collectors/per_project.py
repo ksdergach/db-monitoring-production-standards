@@ -662,13 +662,19 @@ def collect_for_connection(project_id: str, connection_id: str) -> None:
     except ImportError:
         pass
 
-    # #154 post-tick: per-project anomaly alerts. Only fires when (a) we
-    # actually wrote metrics this tick AND (b) the tenant has Telegram
-    # configured via /settings/notifications (#143). No global fallback —
-    # silence is the default.
+    # Оценка и сохранение не зависят от канала уведомлений. Даже неожиданный
+    # сбой этого этапа не должен отменять последующий расчёт дрейфа.
     if rows_saved > 0:
-        _maybe_notify_anomalies(project_id, table_names)
-        _refresh_drift_cache(project_id, table_names)
+        try:
+            _maybe_notify_anomalies(project_id, table_names)
+        except Exception as exc:
+            logger.warning(
+                "[project=%s] anomaly processing failed: %s",
+                project_id,
+                scrub_value(exc),
+            )
+        finally:
+            _refresh_drift_cache(project_id, table_names)
 
 
 def _refresh_drift_cache(project_id: str, table_names: list[str]) -> None:
@@ -825,29 +831,14 @@ def _latest_row_count_at(table: str, project_id: str, ts: str) -> float | None:
 
 
 def _maybe_notify_anomalies(project_id: str, table_names: list[str]) -> None:
-    """Score the last day of metrics for each table just collected, send a
-    Telegram alert for the most recent anomaly per table.
+    """Оценить последние 24 часа и сохранить все оценки таблиц проекта.
 
-    Mirrors the legacy ``collectors/scheduler.py::_score_recent_anomalies``
-    but scoped to the current tenant — both ``score_table`` and the
-    notification path take ``project_id`` explicitly. Anomaly model is
-    persisted per-(project_id, table); first tick after install trains
-    on the fly. ``InsufficientDataError`` is the "we don't have enough
-    history yet" signal, treated as silent skip.
+    score_table обучает отсутствующую модель по накопленной истории.
+    Недостаток истории — ожидаемый пропуск таблицы. Ошибки оценки, записи
+    и уведомлений изолированы по таблицам; Telegram нужен только для доставки.
     """
-    cfg = _load_telegram_config(project_id)
-    if cfg is None:
-        logger.debug(
-            "[project=%s] no Telegram config — skipping anomaly notifications",
-            project_id,
-        )
-        return
-    bot_token, chat_id, throttle = cfg
-
-    # Late imports keep the cold-start cost out of `import collectors.per_project`
-    # — anomaly_detector pulls sklearn (heavy), and most ticks won't notify.
+    # Поздний импорт оставляет загрузку sklearn за пределами импорта сборщика.
     from app.metrics_storage import save_anomaly_scores
-    from app.notifications.telegram import notify_anomaly
     from ml.anomaly_detector import InsufficientDataError, score_table
 
     for name in table_names:
@@ -859,46 +850,58 @@ def _maybe_notify_anomalies(project_id: str, table_names: list[str]) -> None:
                 [{**s, "table_name": name} for s in scores],
                 project_id,
             )
-            anomalies = [s for s in scores if s["is_anomaly"]]
-            if not anomalies:
-                continue
-            latest = max(anomalies, key=lambda s: s["ts"])
-            # #171 quality gate: IsolationForest помечает is_anomaly=1
-            # для borderline точек со score=-0.003, что на стабильных
-            # данных даёт false positives. Здесь — два независимых порога:
-            # (1) magnitude самого score, (2) насколько метрика реально
-            # сдвинулась относительно 7-дневной медианы. Оба должны
-            # пройти, иначе alert не идёт.
-            if not _passes_alert_quality_gate(name, latest, project_id):
-                continue
-            try:
-                notify_anomaly(
-                    project_id,
-                    name,
-                    latest["ts"],
-                    latest["score"],
-                    bot_token=bot_token,
-                    chat_id=chat_id,
-                    throttle_minutes=throttle,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "[project=%s][table=%s] anomaly notification failed: %s",
-                    project_id,
-                    name,
-                    exc,
-                )
         except InsufficientDataError:
             # Not enough history to train — first few ticks. Quiet skip;
             # no metric or log noise, this is expected for fresh tables.
-            pass
+            continue
         except Exception as exc:
             logger.warning(
                 "[project=%s][table=%s] anomaly scoring skipped: %s",
                 project_id,
                 name,
-                exc,
+                scrub_value(exc),
             )
+            continue
+
+        try:
+            _notify_latest_anomaly(project_id, name, scores)
+        except Exception as exc:
+            logger.warning(
+                "[project=%s][table=%s] anomaly notification failed: %s",
+                project_id,
+                name,
+                scrub_value(exc),
+            )
+
+
+def _notify_latest_anomaly(project_id: str, table: str, scores: list[dict]) -> None:
+    """Отобрать последнюю аномалию и доставить уведомление при наличии Telegram.
+
+    Вызывается только после успешного сохранения всех оценок таблицы.
+    Фильтр качества, формат, журнал попыток и throttle остаются прежними.
+    """
+    anomalies = [s for s in scores if s["is_anomaly"]]
+    if not anomalies:
+        return
+    latest = max(anomalies, key=lambda s: s["ts"])
+    if not _passes_alert_quality_gate(table, latest, project_id):
+        return
+
+    cfg = _load_telegram_config(project_id)
+    if cfg is None:
+        return
+    bot_token, chat_id, throttle = cfg
+    from app.notifications.telegram import notify_anomaly
+
+    notify_anomaly(
+        project_id,
+        table,
+        latest["ts"],
+        latest["score"],
+        bot_token=bot_token,
+        chat_id=chat_id,
+        throttle_minutes=throttle,
+    )
 
 
 # --- Scheduler hooks ------------------------------------------------------

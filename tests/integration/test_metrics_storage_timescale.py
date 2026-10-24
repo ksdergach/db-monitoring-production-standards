@@ -9,6 +9,7 @@ on a real Timescale container. The container also exercises the
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -28,12 +29,17 @@ _TIMESCALE_IMAGE = "timescale/timescaledb:latest-pg16"
 
 @pytest.fixture(scope="module")
 def timescale_container():
+    if url := os.environ.get("TEST_TIMESCALE_URL"):
+        yield url
+        return
     with PostgresContainer(_TIMESCALE_IMAGE) as ts:
         yield ts
 
 
 @pytest.fixture(scope="module")
 def timescale_url(timescale_container) -> str:
+    if isinstance(timescale_container, str):
+        return timescale_container
     return timescale_container.get_connection_url().replace("postgresql+psycopg2", "postgresql")
 
 

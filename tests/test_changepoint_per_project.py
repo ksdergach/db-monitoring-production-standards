@@ -3,9 +3,9 @@
 Covers:
 - list_project_ids_with_telegram() filters correctly
 - list_metric_tables(project_id) returns only tables for that tenant
-- detect_changepoints() iterates all projects with Telegram + legacy
+- detect_changepoints() iterates all projects with metrics + legacy
 - project_id is forwarded to detect_all() and notify_changepoint()
-- projects without Telegram config are silently skipped
+- projects without Telegram config skip only notifications
 """
 
 from __future__ import annotations
@@ -52,6 +52,15 @@ def _seed_project(db) -> str:
         slug=uuid.uuid4().hex[:8],
     )
     return project["id"]
+
+
+def _seed_metrics(db, project_id: str) -> None:
+    from datetime import UTC, datetime
+
+    db.save_metrics(
+        [{"ts": datetime.now(UTC), "table_name": "users", "metric_name": "row_count", "value": 1}],
+        project_id,
+    )
 
 
 def _save_telegram(db, project_id: str, chat_id: str = "111", token: str = "tok") -> None:
@@ -186,6 +195,7 @@ def test_detect_changepoints_iterates_all_projects_including_legacy(
 ):
     pid = _seed_project(db)
     _save_telegram(db, pid)
+    _seed_metrics(db, pid)
 
     monkeypatch.setattr(
         "app.notifications.telegram.load_project_telegram_config",
@@ -238,6 +248,7 @@ def test_detect_changepoints_sends_notification_with_correct_project_id(
 ):
     pid = _seed_project(db)
     _save_telegram(db, pid)
+    _seed_metrics(db, pid)
 
     notify_calls: list[dict] = []
 
@@ -257,8 +268,12 @@ def test_detect_changepoints_sends_notification_with_correct_project_id(
     assert any(c["project_id"] == pid and c["table"] == "users" for c in notify_calls)
 
 
-def test_detect_changepoints_skips_project_without_telegram(db, stub_changepoint, monkeypatch):
+def test_detect_changepoints_skips_only_notifications_without_telegram(
+    db, stub_changepoint, monkeypatch
+):
     notify_calls: list = []
+    pid = _seed_project(db)
+    _seed_metrics(db, pid)
 
     monkeypatch.setattr(
         "app.notifications.telegram.load_project_telegram_config",
@@ -278,6 +293,7 @@ def test_detect_changepoints_skips_project_without_telegram(db, stub_changepoint
     detect_changepoints()
 
     assert notify_calls == []
+    assert pid in [call["project_id"] for call in stub_changepoint]
 
 
 # ── save_changepoints deduplication → no repeat notifications ─────────────
@@ -347,7 +363,7 @@ def test_detect_changepoints_no_notification_on_repeat_run(db, monkeypatch):
         lambda *a, **kw: notify_calls.append(1),
     )
     monkeypatch.setattr(
-        "app.metrics_storage.list_project_ids_with_telegram",
+        "app.metrics_storage.list_project_ids_with_metrics",
         lambda: [pid],
     )
     # Prevent legacy path from connecting to the real target DB

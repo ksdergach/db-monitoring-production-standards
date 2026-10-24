@@ -330,6 +330,72 @@ def _migrate_project_scoped_ml_tables(engine: Engine) -> None:
             _migrate_sqlite_project_scoped_ml_table(engine, table, spec)
 
 
+def _migrate_explanation_cache(engine: Engine) -> None:
+    """Удалить общий кэш без владельца и включить проект в его первичный ключ."""
+    table = "llm_explanations"
+    if not _table_exists(engine, table):
+        return
+    columns = _existing_columns(engine, table)
+    desired_pk = ["project_id", "table_name", "metric", "ts"]
+    pk = (
+        _postgres_pk_columns(engine, table) if _is_postgres() else _sqlite_pk_columns(engine, table)
+    )
+    if "project_id" in columns and pk == desired_pk:
+        return
+
+    if _is_postgres():
+        constraint = _postgres_pk_constraint(engine, table)
+        with engine.begin() as conn:
+            conn.execute(text("LOCK TABLE llm_explanations IN ACCESS EXCLUSIVE MODE"))
+            if "project_id" not in columns:
+                # Владельца старых записей определить нельзя: не подставляем legacy.
+                conn.execute(text("DELETE FROM llm_explanations"))
+                conn.execute(
+                    text("ALTER TABLE llm_explanations ADD COLUMN project_id TEXT NOT NULL")
+                )
+            if constraint:
+                quoted = engine.dialect.identifier_preparer.quote(constraint)
+                conn.execute(text(f"ALTER TABLE llm_explanations DROP CONSTRAINT {quoted}"))
+            conn.execute(
+                text(
+                    "ALTER TABLE llm_explanations ADD PRIMARY KEY (project_id, table_name, metric, ts)"
+                )
+            )
+    else:
+        with engine.begin() as conn:
+            # sqlite3 в legacy transaction mode не начинает транзакцию для DDL.
+            # Явный BEGIN гарантирует откат CREATE/DROP/RENAME при любой ошибке.
+            conn.exec_driver_sql("BEGIN IMMEDIATE")
+            conn.execute(
+                text("""
+                CREATE TABLE llm_explanations__new (
+                    project_id TEXT NOT NULL,
+                    table_name TEXT NOT NULL,
+                    metric TEXT NOT NULL,
+                    ts TEXT NOT NULL,
+                    explanation TEXT NOT NULL,
+                    suggested_fix TEXT NOT NULL,
+                    confidence REAL NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (project_id, table_name, metric, ts)
+                )
+            """)
+            )
+            if "project_id" in columns:
+                conn.execute(
+                    text("""
+                    INSERT INTO llm_explanations__new
+                        (project_id, table_name, metric, ts, explanation, suggested_fix,
+                         confidence, created_at)
+                    SELECT project_id, table_name, metric, ts, explanation, suggested_fix,
+                           confidence, created_at FROM llm_explanations
+                """)
+                )
+            conn.execute(text("DROP TABLE llm_explanations"))
+            conn.execute(text("ALTER TABLE llm_explanations__new RENAME TO llm_explanations"))
+    logger.info("llm_explanations migrated to project-scoped cache")
+
+
 def _migrate_existing_schema(engine: Engine) -> None:
     """ALTER pre-#53/#137 tables to match the current schema file.
 
@@ -338,6 +404,8 @@ def _migrate_existing_schema(engine: Engine) -> None:
     is checked independently — a partial DB (e.g. notifications without metrics)
     still gets migrated correctly.
     """
+    _migrate_explanation_cache(engine)
+
     if _table_exists(engine, "metrics") and "project_id" not in _existing_columns(
         engine, "metrics"
     ):
@@ -1791,16 +1859,22 @@ def count_notifications(
 # --- LLM explanation cache (#36) ---
 
 
-def get_cached_explanation(table: str, metric: str, ts: str, ttl_hours: int = 24) -> dict | None:
-    """Return a cached LLM explanation if it exists and is within TTL, else None."""
+def get_cached_explanation(
+    table: str, metric: str, ts: str, project_id: str, ttl_hours: int = 24
+) -> dict | None:
+    """Return this project's explanation within TTL; never search other projects."""
+    if not isinstance(project_id, str) or not project_id.strip():
+        raise ValueError("project_id is required")
     stmt = text("""
         SELECT explanation, suggested_fix, confidence, created_at
         FROM llm_explanations
-        WHERE table_name = :table AND metric = :metric AND ts = :ts
+        WHERE project_id = :project_id AND table_name = :table AND metric = :metric AND ts = :ts
         LIMIT 1
     """)
     with get_engine().connect() as conn:
-        row = conn.execute(stmt, {"table": table, "metric": metric, "ts": ts}).fetchone()
+        row = conn.execute(
+            stmt, {"project_id": project_id, "table": table, "metric": metric, "ts": ts}
+        ).fetchone()
     if not row:
         return None
     raw_created = row[3]
@@ -1827,17 +1901,30 @@ def save_explanation(
     explanation: str,
     suggested_fix: str,
     confidence: float,
+    project_id: str,
 ) -> None:
-    """Upsert an LLM explanation into the cache."""
+    """Upsert an LLM explanation only within the explicitly supplied project."""
+    if not isinstance(project_id, str) or not project_id.strip():
+        raise ValueError("project_id is required")
     sql = _upsert_sql(
         "llm_explanations",
-        ["table_name", "metric", "ts", "explanation", "suggested_fix", "confidence", "created_at"],
-        conflict_columns=["table_name", "metric", "ts"],
+        [
+            "project_id",
+            "table_name",
+            "metric",
+            "ts",
+            "explanation",
+            "suggested_fix",
+            "confidence",
+            "created_at",
+        ],
+        conflict_columns=["project_id", "table_name", "metric", "ts"],
     )
     with get_engine().begin() as conn:
         conn.execute(
             text(sql),
             {
+                "project_id": project_id,
                 "table_name": table,
                 "metric": metric,
                 "ts": ts,

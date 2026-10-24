@@ -1,4 +1,4 @@
-from datetime import UTC, timedelta
+from datetime import UTC, datetime, timedelta
 
 from flask import Blueprint, g, jsonify, request
 from flask_login import current_user
@@ -239,6 +239,10 @@ def explain():
     from .llm import explain_anomaly
 
     body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict) or any(
+        not isinstance(body.get(field, ""), str) for field in ("table", "metric", "ts")
+    ):
+        return jsonify({"error": "table, metric and ts must be strings"}), 400
     table = body.get("table", "").strip()
     metric = body.get("metric", "").strip()
     ts = body.get("ts", "").strip()
@@ -248,13 +252,18 @@ def explain():
     if metric not in _EXPLAIN_METRICS:
         return jsonify({"error": f"metric must be one of {sorted(_EXPLAIN_METRICS)}"}), 400
 
-    cached = get_cached_explanation(table, metric, ts)
-    if cached:
-        return jsonify(cached)
+    try:
+        datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return jsonify({"error": "ts must be an ISO timestamp"}), 400
 
     project_id = _current_project_id()
     if not _has_project_table_metrics(table, project_id):
         return jsonify({"error": "table not found"}), 404
+
+    cached = get_cached_explanation(table, metric, ts, project_id=project_id)
+    if cached:
+        return jsonify(cached)
 
     result = explain_anomaly(table, metric, ts, project_id=project_id)
     save_explanation(
@@ -264,6 +273,7 @@ def explain():
         explanation=result["explanation"],
         suggested_fix=result["suggested_fix"],
         confidence=result["confidence"],
+        project_id=project_id,
     )
     return jsonify(result)
 
