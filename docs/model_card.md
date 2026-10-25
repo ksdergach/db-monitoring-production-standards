@@ -1,6 +1,6 @@
 # Model Card: поиск аномалий в метриках таблиц DB Monitor
 
-Дата сверки: **25 октября 2026 года**. Код: [&#96;8d1c53d&#96;](https://github.com/ksdergach/db-monitoring-production-standards/tree/8d1c53df4710fec8cef2b48d0f2021c25faad916).
+Дата сверки: **25 октября 2026 года**. Код: [`8d1c53d`](https://github.com/ksdergach/db-monitoring-production-standards/tree/8d1c53df4710fec8cef2b48d0f2021c25faad916).
 Карточка следует девяти разделам [Model Cards for Model Reporting (2019)](https://research.google/pubs/model-cards-for-model-reporting/).
 Описан основной режим мониторинга проектов с подключениями; поведение старого режима `legacy` отдельно не рассматривается.
 
