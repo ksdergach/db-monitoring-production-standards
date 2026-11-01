@@ -80,6 +80,8 @@
           <bpmn:flowNodeRef>P_Review</bpmn:flowNodeRef>
           <bpmn:flowNodeRef>P_Approved</bpmn:flowNodeRef>
           <bpmn:flowNodeRef>P_RejectHuman</bpmn:flowNodeRef>
+          <bpmn:flowNodeRef>P_Review_Timeout</bpmn:flowNodeRef>
+          <bpmn:flowNodeRef>P_RejectTimeout</bpmn:flowNodeRef>
         </bpmn:lane>
       </bpmn:laneSet>
       <bpmn:startEvent id="P_Start" name="Вход из схемы 01">
@@ -96,7 +98,7 @@
         <bpmn:outgoing>Publish_F04</bpmn:outgoing>
       </bpmn:exclusiveGateway>
       <bpmn:serviceTask id="P_Train" name="3. Обучить кандидата:&#10;StandardScaler +&#10;Isolation Forest" implementation="##unspecified">
-        <bpmn:documentation>Обучить новую пару модель + scaler отдельно от рабочего файла. Предыдущую версию сохранить.</bpmn:documentation>
+        <bpmn:documentation>Обучить новую пару модель + scaler отдельно от рабочего файла. Предыдущую версию сохранить. Присвоить кандидату идентификатор (например, SHA-256 артефакта); отчёт и решение инженера ссылаются на него.</bpmn:documentation>
         <bpmn:incoming>Publish_F03</bpmn:incoming>
         <bpmn:outgoing>Publish_F05</bpmn:outgoing>
       </bpmn:serviceTask>
@@ -121,17 +123,24 @@ AUC_min, достаточный объём контроля и правила с
         <bpmn:outgoing>Publish_F08</bpmn:outgoing>
       </bpmn:exclusiveGateway>
       <bpmn:userTask id="P_Review" name="5. Проверить данные,&#10;метрики и ограничения;&#10;одобрить или отклонить">
-        <bpmn:documentation>Обязательная валидация человеком после автоматического допуска. Инженер изучает независимость и разметку контроля, сравнение ROC-AUC, сценарии, ложные тревоги, величину прироста и ограничения. Для первого запуска проверяет выполнение заранее утверждённых абсолютных критериев. Сохраняет решение и обоснование. Отсутствие AUC нельзя одобрить в обход обязательной проверки. До решения процесс ожидает; ожидание не является согласием. Рабочая оценка при этом не приостанавливается.</bpmn:documentation>
+        <bpmn:documentation>Обязательная валидация человеком после автоматического допуска. Инженер изучает независимость и разметку контроля, сравнение ROC-AUC, сценарии, ложные тревоги, величину прироста и ограничения. Для первого запуска проверяет выполнение заранее утверждённых абсолютных критериев. Сохраняет решение и обоснование. Отсутствие AUC нельзя одобрить в обход обязательной проверки. Решение относится к конкретному кандидату по его идентификатору. До решения процесс ожидает не дольше 24 ч; ожидание не является согласием. По истечении срока задача прерывается граничным таймером, кандидат не публикуется. Рабочая оценка при этом не приостанавливается.</bpmn:documentation>
         <bpmn:incoming>Publish_F07</bpmn:incoming>
         <bpmn:outgoing>Publish_F09</bpmn:outgoing>
       </bpmn:userTask>
+      <bpmn:boundaryEvent id="P_Review_Timeout" name="Нет решения&#10;за 24 ч" attachedToRef="P_Review" cancelActivity="true">
+        <bpmn:documentation>Срок решения инженера — 24 ч с момента создания задачи. По истечении срока задача прерывается: отсутствие ответа не считается одобрением, кандидат не публикуется.</bpmn:documentation>
+        <bpmn:outgoing>Publish_F19</bpmn:outgoing>
+        <bpmn:timerEventDefinition id="P_Review_Timeout_Definition">
+          <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT24H</bpmn:timeDuration>
+        </bpmn:timerEventDefinition>
+      </bpmn:boundaryEvent>
       <bpmn:exclusiveGateway id="P_Approved" name="Инженер&#10;одобрил?" gatewayDirection="Diverging" default="Publish_F11">
         <bpmn:incoming>Publish_F09</bpmn:incoming>
         <bpmn:outgoing>Publish_F10</bpmn:outgoing>
         <bpmn:outgoing>Publish_F11</bpmn:outgoing>
       </bpmn:exclusiveGateway>
       <bpmn:serviceTask id="P_Register" name="6. Сохранить версию,&#10;метаданные, отчёт&#10;и решение инженера" implementation="##unspecified">
-        <bpmn:documentation>Отдельный артефакт модели и scaler; проект/таблица; версии кода и библиотек; границы выборок; параметры; результаты контроля; автор и время валидации. Хранить прежние версии.</bpmn:documentation>
+        <bpmn:documentation>Отдельный артефакт модели и scaler; проект/таблица; версии кода и библиотек; границы выборок; параметры; результаты контроля; автор и время валидации. Хранить прежние версии. Регистрировать только артефакт, идентификатор которого указан в решении инженера; несовпадение передаётся как BPMN Error.</bpmn:documentation>
         <bpmn:incoming>Publish_F10</bpmn:incoming>
         <bpmn:outgoing>Publish_F12</bpmn:outgoing>
       </bpmn:serviceTask>
@@ -177,6 +186,11 @@ AUC_min, достаточный объём контроля и правила с
         <bpmn:incoming>Publish_F11</bpmn:incoming>
         <bpmn:errorEventDefinition id="P_RejectHuman_Definition" errorRef="Error_Rejected"/>
       </bpmn:endEvent>
+      <bpmn:endEvent id="P_RejectTimeout" name="Срок решения&#10;истёк">
+        <bpmn:documentation>BPMN Error RetrainRejected. Инженер не принял решение за 24 ч; кандидат не одобрен. Прерывает подпроцесс Publish; перехватывается событием Publish_Error на схеме 01.</bpmn:documentation>
+        <bpmn:incoming>Publish_F19</bpmn:incoming>
+        <bpmn:errorEventDefinition id="P_RejectTimeout_Definition" errorRef="Error_Rejected"/>
+      </bpmn:endEvent>
       <bpmn:endEvent id="P_RejectScores" name="Оценки&#10;не согласованы">
         <bpmn:documentation>BPMN Error RetrainRejected. Прерывает подпроцесс Publish; перехватывается событием Publish_Error на схеме 01. Ошибки сервисных задач также передаются в BPMN Error и перехватываются там.</bpmn:documentation>
         <bpmn:incoming>Publish_F17</bpmn:incoming>
@@ -208,6 +222,7 @@ AUC_min, достаточный объём контроля и правила с
       </bpmn:sequenceFlow>
       <bpmn:sequenceFlow id="Publish_F17" sourceRef="P_Coherent" targetRef="P_RejectScores" name="Нет"/>
       <bpmn:sequenceFlow id="Publish_F18" sourceRef="P_Resume" targetRef="P_End"/>
+      <bpmn:sequenceFlow id="Publish_F19" sourceRef="P_Review_Timeout" targetRef="P_RejectTimeout"/>
     </bpmn:subProcess>
     <bpmn:boundaryEvent id="Publish_Error" name="Ошибка / отказ" attachedToRef="Publish" cancelActivity="true">
       <bpmn:outgoing>Process_Retrain_F12</bpmn:outgoing>
@@ -341,7 +356,7 @@ AUC_min, достаточный объём контроля и правила с
       <bpmn:incoming>Process_Retrain_F11</bpmn:incoming>
     </bpmn:endEvent>
     <bpmn:serviceTask id="Notify" name="Зафиксировать исход R1–R4;&#10;попробовать уведомить&#10;инженера в Telegram" implementation="##unspecified">
-      <bpmn:documentation>Сначала сохранить результат обработки. Уведомление при настроенном Telegram: ограниченное ожидание, ошибки доставки возвращаются статусом и записываются; отсутствие настройки также фиксируется. Уведомление не меняет исход восстановления и не снимает блокировку.</bpmn:documentation>
+      <bpmn:documentation>Сначала сохранить результат обработки. Уведомление при настроенном Telegram: ограниченное ожидание, ошибки доставки возвращаются статусом и записываются; отсутствие настройки также фиксируется. Уведомление не меняет исход восстановления и не снимает блокировку. Учитывать число неуспешных попыток подряд для пары; начиная с третьей, уведомление требует от инженера разобрать причину.</bpmn:documentation>
       <bpmn:incoming>Process_Retrain_F14</bpmn:incoming>
       <bpmn:outgoing>Process_Retrain_F15</bpmn:outgoing>
     </bpmn:serviceTask>
@@ -537,7 +552,7 @@ AUC_min, достаточный объём контроля и правила с
         <dc:Bounds x="40" y="130" width="700" height="2300"/>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Lane_Human_DI" bpmnElement="Lane_Human" isHorizontal="false">
-        <dc:Bounds x="740" y="130" width="440" height="2300"/>
+        <dc:Bounds x="740" y="130" width="560" height="2300"/>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="P_Start_DI" bpmnElement="P_Start">
         <dc:Bounds x="370" y="205" width="40" height="40"/>
@@ -618,6 +633,18 @@ AUC_min, достаточный объём контроля и правила с
         <dc:Bounds x="940" y="1380" width="40" height="40"/>
         <bpmndi:BPMNLabel>
           <dc:Bounds x="805" y="1440" width="310" height="60"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="P_Review_Timeout_DI" bpmnElement="P_Review_Timeout">
+        <dc:Bounds x="1085" y="1080" width="40" height="40"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1135" y="1045" width="110" height="50"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="P_RejectTimeout_DI" bpmnElement="P_RejectTimeout">
+        <dc:Bounds x="1210" y="1380" width="40" height="40"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1170" y="1440" width="120" height="60"/>
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="P_RejectScores_DI" bpmnElement="P_RejectScores">
@@ -723,6 +750,11 @@ AUC_min, достаточный объём контроля и правила с
       <bpmndi:BPMNEdge id="Publish_F18_DI" bpmnElement="Publish_F18">
         <di:waypoint x="390.0" y="2216"/>
         <di:waypoint x="390.0" y="2310"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Publish_F19_DI" bpmnElement="Publish_F19">
+        <di:waypoint x="1125" y="1100"/>
+        <di:waypoint x="1230" y="1100"/>
+        <di:waypoint x="1230" y="1380"/>
       </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>
