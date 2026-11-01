@@ -1,8 +1,9 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_Retrain" targetNamespace="https://github.com/ksdergach/db-monitoring-production-standards/bpmn/retrain" exporter="DB Monitor homework diagram builder" exporterVersion="1.0" expressionLanguage="urn:db-monitor:descriptive-conditions">
-  <bpmn:error id="Error_Rejected" name="Публикация отклонена" errorCode="RetrainRejected"/>
+  <bpmn:error id="Error_BeforePause" name="Сбой до приостановки оценки" errorCode="CandidateFailed"/>
+  <bpmn:error id="Error_Deploy" name="Сбой этапа 7" errorCode="DeployFailed"/>
   <bpmn:process id="Process_Retrain" name="Переобучение модели DB Monitor" isExecutable="false">
-    <bpmn:documentation>Предлагаемый процесс. Не подключён к BPMN-движку. Условия и расписание описательные. Обязательное сравнение ROC-AUC на независимом размеченном контроле, дополнительные проверки и валидация человеком предшествуют публикации. Внешний диспетчер должен предотвращать конкурентные попытки для одной пары; обычные запросы и сигнал дрейфа не запускают повтор в режиме отказа. Ошибки сервисных задач должны быть отображены в BPMN Error; такая интеграция пока не реализована.</bpmn:documentation>
+    <bpmn:documentation>Предлагаемый процесс. Не подключён к BPMN-движку. Условия и расписание описательные. Обязательное сравнение ROC-AUC на независимом размеченном контроле, дополнительные проверки и валидация человеком предшествуют публикации. Внешний диспетчер должен предотвращать конкурентные попытки для одной пары; обычные запросы и сигнал дрейфа не запускают повтор в режиме отказа. Отклонение кандидата — обычное завершение подпроцесса публикации с результатом «Кандидат не опубликован», а не ошибка. Технические ошибки этапов 2–6 и этапа 7 до приостановки оценки отображаются в BPMN Error CandidateFailed, после приостановки — в DeployFailed; неотображённая ошибка считается DeployFailed. Такая интеграция пока не реализована.</bpmn:documentation>
     <bpmn:startEvent id="Start_Timer" name="Каждую ночь&#10;в 04:00">
       <bpmn:documentation>Часовой пояс планировщика сервера. Для каждой пары создаётся отдельный экземпляр процесса.</bpmn:documentation>
       <bpmn:outgoing>Process_Retrain_F01</bpmn:outgoing>
@@ -50,11 +51,10 @@
     <bpmn:exclusiveGateway id="Merge_Failure" gatewayDirection="Converging">
       <bpmn:incoming>Process_Retrain_F07</bpmn:incoming>
       <bpmn:incoming>Process_Retrain_F09</bpmn:incoming>
-      <bpmn:incoming>Process_Retrain_F12</bpmn:incoming>
       <bpmn:outgoing>Process_Retrain_F13</bpmn:outgoing>
     </bpmn:exclusiveGateway>
     <bpmn:subProcess id="Publish" name="2–7. Подготовить кандидата,&#10;проверить и опубликовать&#10;Подробности — схема 02">
-      <bpmn:documentation>Встроенный подпроцесс. Только успешное завершение разрешает успешный конец основного процесса. Ошибки и отклонения передаются граничному событию.</bpmn:documentation>
+      <bpmn:documentation>Встроенный подпроцесс. Завершается обычным концом с результатом «Новая версия опубликована» либо «Кандидат не опубликован» с причиной; результат проверяет шлюз на схеме 01. Технические ошибки до приостановки оценки передаются как CandidateFailed, ошибки этапа 7 после приостановки — как DeployFailed.</bpmn:documentation>
       <bpmn:incoming>Process_Retrain_F08</bpmn:incoming>
       <bpmn:outgoing>Process_Retrain_F10</bpmn:outgoing>
       <bpmn:laneSet id="Publish_Lanes">
@@ -80,6 +80,8 @@
           <bpmn:flowNodeRef>P_Review</bpmn:flowNodeRef>
           <bpmn:flowNodeRef>P_Approved</bpmn:flowNodeRef>
           <bpmn:flowNodeRef>P_RejectHuman</bpmn:flowNodeRef>
+          <bpmn:flowNodeRef>P_Review_Timeout</bpmn:flowNodeRef>
+          <bpmn:flowNodeRef>P_RejectTimeout</bpmn:flowNodeRef>
         </bpmn:lane>
       </bpmn:laneSet>
       <bpmn:startEvent id="P_Start" name="Вход из схемы 01">
@@ -96,7 +98,7 @@
         <bpmn:outgoing>Publish_F04</bpmn:outgoing>
       </bpmn:exclusiveGateway>
       <bpmn:serviceTask id="P_Train" name="3. Обучить кандидата:&#10;StandardScaler +&#10;Isolation Forest" implementation="##unspecified">
-        <bpmn:documentation>Обучить новую пару модель + scaler отдельно от рабочего файла. Предыдущую версию сохранить.</bpmn:documentation>
+        <bpmn:documentation>Обучить новую пару модель + scaler отдельно от рабочего файла. Предыдущую версию сохранить. Присвоить кандидату идентификатор (например, SHA-256 артефакта); отчёт и решение инженера ссылаются на него.</bpmn:documentation>
         <bpmn:incoming>Publish_F03</bpmn:incoming>
         <bpmn:outgoing>Publish_F05</bpmn:outgoing>
       </bpmn:serviceTask>
@@ -121,32 +123,39 @@ AUC_min, достаточный объём контроля и правила с
         <bpmn:outgoing>Publish_F08</bpmn:outgoing>
       </bpmn:exclusiveGateway>
       <bpmn:userTask id="P_Review" name="5. Проверить данные,&#10;метрики и ограничения;&#10;одобрить или отклонить">
-        <bpmn:documentation>Обязательная валидация человеком после автоматического допуска. Инженер изучает независимость и разметку контроля, сравнение ROC-AUC, сценарии, ложные тревоги, величину прироста и ограничения. Для первого запуска проверяет выполнение заранее утверждённых абсолютных критериев. Сохраняет решение и обоснование. Отсутствие AUC нельзя одобрить в обход обязательной проверки. До решения процесс ожидает; ожидание не является согласием. Рабочая оценка при этом не приостанавливается.</bpmn:documentation>
+        <bpmn:documentation>Обязательная валидация человеком после автоматического допуска. Инженер изучает независимость и разметку контроля, сравнение ROC-AUC, сценарии, ложные тревоги, величину прироста и ограничения. Для первого запуска проверяет выполнение заранее утверждённых абсолютных критериев. Сохраняет решение и обоснование. Отсутствие AUC нельзя одобрить в обход обязательной проверки. Решение относится к конкретному кандидату по его идентификатору. До решения процесс ожидает не дольше 24 ч; ожидание не является согласием. По истечении срока задача прерывается граничным таймером, кандидат не публикуется. Рабочая оценка при этом не приостанавливается.</bpmn:documentation>
         <bpmn:incoming>Publish_F07</bpmn:incoming>
         <bpmn:outgoing>Publish_F09</bpmn:outgoing>
       </bpmn:userTask>
+      <bpmn:boundaryEvent id="P_Review_Timeout" name="Нет решения&#10;за 24 ч" attachedToRef="P_Review" cancelActivity="true">
+        <bpmn:documentation>Срок решения инженера — 24 ч с момента создания задачи. По истечении срока задача прерывается: отсутствие ответа не считается одобрением, кандидат не публикуется.</bpmn:documentation>
+        <bpmn:outgoing>Publish_F19</bpmn:outgoing>
+        <bpmn:timerEventDefinition id="P_Review_Timeout_Definition">
+          <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT24H</bpmn:timeDuration>
+        </bpmn:timerEventDefinition>
+      </bpmn:boundaryEvent>
       <bpmn:exclusiveGateway id="P_Approved" name="Инженер&#10;одобрил?" gatewayDirection="Diverging" default="Publish_F11">
         <bpmn:incoming>Publish_F09</bpmn:incoming>
         <bpmn:outgoing>Publish_F10</bpmn:outgoing>
         <bpmn:outgoing>Publish_F11</bpmn:outgoing>
       </bpmn:exclusiveGateway>
       <bpmn:serviceTask id="P_Register" name="6. Сохранить версию,&#10;метаданные, отчёт&#10;и решение инженера" implementation="##unspecified">
-        <bpmn:documentation>Отдельный артефакт модели и scaler; проект/таблица; версии кода и библиотек; границы выборок; параметры; результаты контроля; автор и время валидации. Хранить прежние версии.</bpmn:documentation>
+        <bpmn:documentation>Отдельный артефакт модели и scaler; проект/таблица; версии кода и библиотек; границы выборок; параметры; результаты контроля; автор и время валидации. Хранить прежние версии. Регистрировать только артефакт, идентификатор которого указан в решении инженера; несовпадение передаётся как BPMN Error.</bpmn:documentation>
         <bpmn:incoming>Publish_F10</bpmn:incoming>
         <bpmn:outgoing>Publish_F12</bpmn:outgoing>
       </bpmn:serviceTask>
       <bpmn:serviceTask id="P_Window" name="7. Проверить артефакт;&#10;приостановить оценку;&#10;задать окно 14 дней" implementation="##unspecified">
-        <bpmn:documentation>Выполнять только после явного одобрения инженера и регистрации версии. Проверить загрузку артефакта и контракт признаков. Для пары приостановить обычную оценку и смену версии, дождаться начатых операций и проверить актуальность решения и исходного контекста. Затем взять текущее время конца окна и последние 14 дней перед ним. До попытки переключения сохранить границы окна и прежнюю версию в контексте восстановления. Ошибка проверки или сохранения запрещает переключение и передаётся как BPMN Error. На повторе восстановления использовать сохранённые границы, не выбирать новое окно.</bpmn:documentation>
+        <bpmn:documentation>Выполнять только после явного одобрения инженера и регистрации версии. Проверить загрузку артефакта и контракт признаков. Для пары приостановить обычную оценку и смену версии, дождаться начатых операций и проверить актуальность решения и исходного контекста. Затем взять текущее время конца окна и последние 14 дней перед ним. До попытки переключения сохранить границы окна и прежнюю версию в контексте восстановления. Ошибка проверки артефакта до приостановки оценки передаётся как BPMN Error CandidateFailed: в работе ещё ничего не изменено. После приостановки любая ошибка, в том числе сохранения окна, запрещает переключение и передаётся как DeployFailed. На повторе восстановления использовать сохранённые границы, не выбирать новое окно.</bpmn:documentation>
         <bpmn:incoming>Publish_F12</bpmn:incoming>
         <bpmn:outgoing>Publish_F13</bpmn:outgoing>
       </bpmn:serviceTask>
       <bpmn:serviceTask id="P_Deploy" name="7. Переключить версию;&#10;подтвердить результат" implementation="##unspecified">
-        <bpmn:documentation>Под сохраняющейся блокировкой повторно подтвердить неизменность одобренного контекста, использовать сохранённое окно и переключить активный указатель. Подтвердить фактически выбранную версию. Ошибку или неизвестный результат передать как BPMN Error. Рабочая версия не меняется, пока окно не сохранено.</bpmn:documentation>
+        <bpmn:documentation>Под сохраняющейся блокировкой повторно подтвердить неизменность одобренного контекста, использовать сохранённое окно и переключить активный указатель. Подтвердить фактически выбранную версию. Ошибку или неизвестный результат передать как BPMN Error DeployFailed. Рабочая версия не меняется, пока окно не сохранено.</bpmn:documentation>
         <bpmn:incoming>Publish_F13</bpmn:incoming>
         <bpmn:outgoing>Publish_F14</bpmn:outgoing>
       </bpmn:serviceTask>
       <bpmn:serviceTask id="P_Scores" name="7. Пересчитать и сохранить&#10;фиксированное окно&#10;14 дней" implementation="##unspecified">
-        <bpmn:documentation>Служебный пересчёт выбранной моделью только за окно, сохранённое перед переключением после решения инженера. Подтвердить полноту, принадлежность результатов версии, проекту, таблице и этому окну. Не смешивать результаты разных моделей.</bpmn:documentation>
+        <bpmn:documentation>Служебный пересчёт выбранной моделью только за окно, сохранённое перед переключением после решения инженера. Подтвердить полноту, принадлежность результатов версии, проекту, таблице и этому окну. Не смешивать результаты разных моделей. Ошибка пересчёта или записи передаётся как DeployFailed.</bpmn:documentation>
         <bpmn:incoming>Publish_F14</bpmn:incoming>
         <bpmn:outgoing>Publish_F15</bpmn:outgoing>
       </bpmn:serviceTask>
@@ -160,27 +169,29 @@ AUC_min, достаточный объём контроля и правила с
         <bpmn:outgoing>Publish_F18</bpmn:outgoing>
       </bpmn:serviceTask>
       <bpmn:endEvent id="P_End" name="Новая версия и оценки&#10;подтверждены">
+        <bpmn:documentation>Результат подпроцесса — «Новая версия опубликована». На схеме 01 — ветка «Да» шлюза «Новая версия опубликована?».</bpmn:documentation>
         <bpmn:incoming>Publish_F18</bpmn:incoming>
       </bpmn:endEvent>
       <bpmn:endEvent id="P_RejectData" name="Данные / разметка&#10;не допущены">
-        <bpmn:documentation>BPMN Error RetrainRejected. Прерывает подпроцесс Publish; перехватывается событием Publish_Error на схеме 01. Ошибки сервисных задач также передаются в BPMN Error и перехватываются там.</bpmn:documentation>
+        <bpmn:documentation>Обычное завершение подпроцесса с результатом «Кандидат не опубликован»; причина — данные или разметка не допущены. Кандидат не активировался, рабочая модель и её оценки не изменялись. На схеме 01 — ветка «Нет» шлюза «Новая версия опубликована?», без восстановления.</bpmn:documentation>
         <bpmn:incoming>Publish_F04</bpmn:incoming>
-        <bpmn:errorEventDefinition id="P_RejectData_Definition" errorRef="Error_Rejected"/>
       </bpmn:endEvent>
       <bpmn:endEvent id="P_RejectQuality" name="Кандидат не лучше /&#10;проверки не пройдены">
-        <bpmn:documentation>BPMN Error RetrainRejected. Прерывает подпроцесс Publish; перехватывается событием Publish_Error на схеме 01. Ошибки сервисных задач также передаются в BPMN Error и перехватываются там.</bpmn:documentation>
+        <bpmn:documentation>Обычное завершение подпроцесса с результатом «Кандидат не опубликован»; причина — кандидат не лучше или обязательные проверки не пройдены. Кандидат не активировался, рабочая модель и её оценки не изменялись. На схеме 01 — ветка «Нет» шлюза «Новая версия опубликована?», без восстановления.</bpmn:documentation>
         <bpmn:incoming>Publish_F08</bpmn:incoming>
-        <bpmn:errorEventDefinition id="P_RejectQuality_Definition" errorRef="Error_Rejected"/>
       </bpmn:endEvent>
       <bpmn:endEvent id="P_RejectHuman" name="Инженер отклонил&#10;публикацию">
-        <bpmn:documentation>BPMN Error RetrainRejected. Прерывает подпроцесс Publish; перехватывается событием Publish_Error на схеме 01. Ошибки сервисных задач также передаются в BPMN Error и перехватываются там.</bpmn:documentation>
+        <bpmn:documentation>Обычное завершение подпроцесса с результатом «Кандидат не опубликован»; причина — инженер отклонил публикацию. Кандидат не активировался, рабочая модель и её оценки не изменялись. На схеме 01 — ветка «Нет» шлюза «Новая версия опубликована?», без восстановления.</bpmn:documentation>
         <bpmn:incoming>Publish_F11</bpmn:incoming>
-        <bpmn:errorEventDefinition id="P_RejectHuman_Definition" errorRef="Error_Rejected"/>
+      </bpmn:endEvent>
+      <bpmn:endEvent id="P_RejectTimeout" name="Срок решения&#10;истёк">
+        <bpmn:documentation>Обычное завершение подпроцесса с результатом «Кандидат не опубликован»; причина — инженер не принял решение за 24 ч. Кандидат не активировался, рабочая модель и её оценки не изменялись. На схеме 01 — ветка «Нет» шлюза «Новая версия опубликована?», без восстановления.</bpmn:documentation>
+        <bpmn:incoming>Publish_F19</bpmn:incoming>
       </bpmn:endEvent>
       <bpmn:endEvent id="P_RejectScores" name="Оценки&#10;не согласованы">
-        <bpmn:documentation>BPMN Error RetrainRejected. Прерывает подпроцесс Publish; перехватывается событием Publish_Error на схеме 01. Ошибки сервисных задач также передаются в BPMN Error и перехватываются там.</bpmn:documentation>
+        <bpmn:documentation>BPMN Error DeployFailed: после переключения оценки за сохранённое окно не согласованы. Прерывает подпроцесс Publish; перехватывается событием «Сбой этапа 7» на схеме 01 и ведёт в восстановление.</bpmn:documentation>
         <bpmn:incoming>Publish_F17</bpmn:incoming>
-        <bpmn:errorEventDefinition id="P_RejectScores_Definition" errorRef="Error_Rejected"/>
+        <bpmn:errorEventDefinition id="P_RejectScores_Definition" errorRef="Error_Deploy"/>
       </bpmn:endEvent>
       <bpmn:sequenceFlow id="Publish_F01" sourceRef="P_Start" targetRef="P_Data"/>
       <bpmn:sequenceFlow id="Publish_F02" sourceRef="P_Data" targetRef="P_Data_OK"/>
@@ -208,14 +219,21 @@ AUC_min, достаточный объём контроля и правила с
       </bpmn:sequenceFlow>
       <bpmn:sequenceFlow id="Publish_F17" sourceRef="P_Coherent" targetRef="P_RejectScores" name="Нет"/>
       <bpmn:sequenceFlow id="Publish_F18" sourceRef="P_Resume" targetRef="P_End"/>
+      <bpmn:sequenceFlow id="Publish_F19" sourceRef="P_Review_Timeout" targetRef="P_RejectTimeout"/>
     </bpmn:subProcess>
-    <bpmn:boundaryEvent id="Publish_Error" name="Ошибка / отказ" attachedToRef="Publish" cancelActivity="true">
+    <bpmn:boundaryEvent id="Publish_Error" name="Сбой этапа 7" attachedToRef="Publish" cancelActivity="true">
+      <bpmn:documentation>Ошибка этапа 7 после приостановки оценки: подготовка переключения, переключение, пересчёт или несогласованные оценки (BPMN Error DeployFailed). Восстановление учитывает фактически выполненные действия по журналу этапа 7.</bpmn:documentation>
       <bpmn:outgoing>Process_Retrain_F12</bpmn:outgoing>
-      <bpmn:errorEventDefinition id="Publish_Error_Definition"/>
+      <bpmn:errorEventDefinition id="Publish_Error_Definition" errorRef="Error_Deploy"/>
+    </bpmn:boundaryEvent>
+    <bpmn:boundaryEvent id="Publish_Early" name="Сбой до приостановки оценки" attachedToRef="Publish" cancelActivity="true">
+      <bpmn:documentation>Техническая ошибка этапов 2–6 или этапа 7 до приостановки оценки (BPMN Error CandidateFailed). Рабочая модель и её оценки не изменялись, поэтому сбой обрабатывается как отклонение кандидата, без восстановления.</bpmn:documentation>
+      <bpmn:outgoing>Process_Retrain_F18</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="Publish_Early_Definition" errorRef="Error_BeforePause"/>
     </bpmn:boundaryEvent>
     <bpmn:subProcess id="Recover" name="8. Восстановить безопасное&#10;состояние модели и оценок&#10;Подробности — схема 03">
-      <bpmn:documentation>Встроенный подпроцесс с четырьмя возможными исходами R1–R4. Перед переключением режима подтверждается фактическое состояние.</bpmn:documentation>
-      <bpmn:incoming>Process_Retrain_F13</bpmn:incoming>
+      <bpmn:documentation>Встроенный подпроцесс с четырьмя возможными исходами R1–R4. Перед переключением режима подтверждается фактическое состояние. Вход: сбой этапа 7 после приостановки оценки, ошибка этапа 1, неподтверждённое состояние рабочей модели после отклонения кандидата либо незавершённое восстановление (R2/R4).</bpmn:documentation>
+      <bpmn:incoming>Process_Retrain_F25</bpmn:incoming>
       <bpmn:outgoing>Process_Retrain_F14</bpmn:outgoing>
       <bpmn:startEvent id="R_Start" name="Вход из схемы 01">
         <bpmn:outgoing>Recover_F01</bpmn:outgoing>
@@ -226,7 +244,7 @@ AUC_min, достаточный объём контроля и правила с
         <bpmn:outgoing>Recover_F02</bpmn:outgoing>
       </bpmn:serviceTask>
       <bpmn:serviceTask id="R_Inspect" name="Записать причину отказа;&#10;определить активную версию&#10;и пригодность прежней" implementation="##unspecified">
-        <bpmn:documentation>Прежняя версия — модель до попытки обновления, не кандидат. Проверить загрузку, проект/таблицу и контракт признаков. Неудача чтения указателя сохраняется как неизвестное состояние; отсутствие доказательства пригодности означает ветку Нет.</bpmn:documentation>
+        <bpmn:documentation>Прежняя версия — модель до попытки обновления, не кандидат. Проверить загрузку, проект/таблицу и контракт признаков. Неудача чтения указателя сохраняется как неизвестное состояние; отсутствие доказательства пригодности означает ветку Нет. Учесть журнал этапа 7: была ли приостановлена оценка, сохранено ли окно, начинались ли переключение и пересчёт. Если переключение не начиналось, прежняя версия остаётся выбранной, а оценки кандидата не записывались.</bpmn:documentation>
         <bpmn:incoming>Recover_F02</bpmn:incoming>
         <bpmn:outgoing>Recover_F03</bpmn:outgoing>
       </bpmn:serviceTask>
@@ -332,16 +350,57 @@ AUC_min, достаточный объём контроля и правила с
       <bpmn:sequenceFlow id="Recover_F19" sourceRef="R_Resume" targetRef="R_End1"/>
       <bpmn:sequenceFlow id="Recover_F20" sourceRef="R_LogScores" targetRef="R_End2"/>
     </bpmn:subProcess>
+    <bpmn:exclusiveGateway id="Result" name="Новая версия&#10;опубликована?" gatewayDirection="Diverging" default="Process_Retrain_F17">
+      <bpmn:documentation>Проверяет результат подпроцесса публикации. Отклонение кандидата не попадает в ветку успешной публикации.</bpmn:documentation>
+      <bpmn:incoming>Process_Retrain_F10</bpmn:incoming>
+      <bpmn:outgoing>Process_Retrain_F16</bpmn:outgoing>
+      <bpmn:outgoing>Process_Retrain_F17</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:exclusiveGateway id="Merge_Reject" gatewayDirection="Converging">
+      <bpmn:incoming>Process_Retrain_F17</bpmn:incoming>
+      <bpmn:incoming>Process_Retrain_F18</bpmn:incoming>
+      <bpmn:outgoing>Process_Retrain_F19</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="Check_Model" name="Проверить рабочую модель&#10;без остановки оценки" implementation="##unspecified">
+      <bpmn:documentation>Кандидат не активировался, поэтому обычная оценка не приостанавливается и история не пересчитывается. Прочитать активный указатель и сравнить его с версией, зафиксированной на этапе 1. Если версия выбрана, проверить загрузку, проект/таблицу и контракт признаков. Результат: исправна; активной модели нет (указатель прочитан и пуст, как и на этапе 1); не подтверждена (ошибка чтения или проверки, расхождение с этапом 1).</bpmn:documentation>
+      <bpmn:incoming>Process_Retrain_F19</bpmn:incoming>
+      <bpmn:outgoing>Process_Retrain_F20</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Notify_Reject" name="Зафиксировать причину;&#10;уведомить инженера&#10;в Telegram" implementation="##unspecified">
+      <bpmn:documentation>Сохранить исход «Кандидат не опубликован», причину (данные, качество, отказ инженера, истечение срока или сбой до приостановки оценки) и результат проверки рабочей модели. Попытка считается неуспешной: следующая — ночью или вручную. Уведомление при настроенном Telegram: ограниченное ожидание; ошибка доставки или отсутствие настройки записываются и не меняют маршрут. Учитывать число неуспешных попыток подряд для пары; начиная с третьей, уведомление требует от инженера разобрать причину.</bpmn:documentation>
+      <bpmn:incoming>Process_Retrain_F20</bpmn:incoming>
+      <bpmn:outgoing>Process_Retrain_F21</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="Model_State" name="Состояние&#10;рабочей модели?" gatewayDirection="Diverging" default="Process_Retrain_F24">
+      <bpmn:incoming>Process_Retrain_F21</bpmn:incoming>
+      <bpmn:outgoing>Process_Retrain_F22</bpmn:outgoing>
+      <bpmn:outgoing>Process_Retrain_F23</bpmn:outgoing>
+      <bpmn:outgoing>Process_Retrain_F24</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="End_Kept" name="Кандидат не опубликован;&#10;рабочая модель без изменений;&#10;оценка продолжается">
+      <bpmn:documentation>Рабочая модель не менялась и подтверждена; обычная оценка шла без остановки, история не пересчитывалась.</bpmn:documentation>
+      <bpmn:incoming>Process_Retrain_F22</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="End_NoModel" name="Кандидат не опубликован;&#10;активной модели нет;&#10;оценка не выполняется">
+      <bpmn:documentation>Первый запуск или модели не было до попытки. Обычная оценка для пары не выполняется: модели нет, а обучение по запросу в режиме отказа не запускается.</bpmn:documentation>
+      <bpmn:incoming>Process_Retrain_F23</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:exclusiveGateway id="Merge_Recover" gatewayDirection="Converging">
+      <bpmn:incoming>Process_Retrain_F13</bpmn:incoming>
+      <bpmn:incoming>Process_Retrain_F12</bpmn:incoming>
+      <bpmn:incoming>Process_Retrain_F24</bpmn:incoming>
+      <bpmn:outgoing>Process_Retrain_F25</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
     <bpmn:serviceTask id="Notify_Success" name="Зафиксировать новую версию;&#10;уведомить инженера&#10;в Telegram" implementation="##unspecified">
       <bpmn:documentation>После успешной публикации отправить версию, результаты проверок и решение инженера в настроенный Telegram. Ограничить ожидание доставки; ошибку или отсутствие настройки явно записать. Ошибка уведомления не отменяет успешный деплой. Для фактической доставки необходима настроенная интеграция.</bpmn:documentation>
-      <bpmn:incoming>Process_Retrain_F10</bpmn:incoming>
+      <bpmn:incoming>Process_Retrain_F16</bpmn:incoming>
       <bpmn:outgoing>Process_Retrain_F11</bpmn:outgoing>
     </bpmn:serviceTask>
     <bpmn:endEvent id="End_Success" name="Новая модель доступна;&#10;оценки согласованы;&#10;обычная оценка разрешена">
       <bpmn:incoming>Process_Retrain_F11</bpmn:incoming>
     </bpmn:endEvent>
     <bpmn:serviceTask id="Notify" name="Зафиксировать исход R1–R4;&#10;попробовать уведомить&#10;инженера в Telegram" implementation="##unspecified">
-      <bpmn:documentation>Сначала сохранить результат обработки. Уведомление при настроенном Telegram: ограниченное ожидание, ошибки доставки возвращаются статусом и записываются; отсутствие настройки также фиксируется. Уведомление не меняет исход восстановления и не снимает блокировку.</bpmn:documentation>
+      <bpmn:documentation>Сначала сохранить результат обработки. Уведомление при настроенном Telegram: ограниченное ожидание, ошибки доставки возвращаются статусом и записываются; отсутствие настройки также фиксируется. Уведомление не меняет исход восстановления и не снимает блокировку. Учитывать число неуспешных попыток подряд для пары; начиная с третьей, уведомление требует от инженера разобрать причину.</bpmn:documentation>
       <bpmn:incoming>Process_Retrain_F14</bpmn:incoming>
       <bpmn:outgoing>Process_Retrain_F15</bpmn:outgoing>
     </bpmn:serviceTask>
@@ -359,12 +418,28 @@ AUC_min, достаточный объём контроля и правила с
     <bpmn:sequenceFlow id="Process_Retrain_F09" sourceRef="Pending" targetRef="Merge_Failure" name="Да: R2 / R4">
       <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">Предыдущий исход R2 или R4: восстановление не завершено</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
-    <bpmn:sequenceFlow id="Process_Retrain_F10" sourceRef="Publish" targetRef="Notify_Success"/>
+    <bpmn:sequenceFlow id="Process_Retrain_F10" sourceRef="Publish" targetRef="Result"/>
     <bpmn:sequenceFlow id="Process_Retrain_F11" sourceRef="Notify_Success" targetRef="End_Success"/>
-    <bpmn:sequenceFlow id="Process_Retrain_F12" sourceRef="Publish_Error" targetRef="Merge_Failure"/>
-    <bpmn:sequenceFlow id="Process_Retrain_F13" sourceRef="Merge_Failure" targetRef="Recover"/>
+    <bpmn:sequenceFlow id="Process_Retrain_F12" sourceRef="Publish_Error" targetRef="Merge_Recover"/>
+    <bpmn:sequenceFlow id="Process_Retrain_F13" sourceRef="Merge_Failure" targetRef="Merge_Recover"/>
     <bpmn:sequenceFlow id="Process_Retrain_F14" sourceRef="Recover" targetRef="Notify"/>
     <bpmn:sequenceFlow id="Process_Retrain_F15" sourceRef="Notify" targetRef="End_Handled"/>
+    <bpmn:sequenceFlow id="Process_Retrain_F16" sourceRef="Result" targetRef="Notify_Success" name="Да">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">Подпроцесс завершён событием «Новая версия и оценки подтверждены»</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Process_Retrain_F17" sourceRef="Result" targetRef="Merge_Reject" name="Нет"/>
+    <bpmn:sequenceFlow id="Process_Retrain_F18" sourceRef="Publish_Early" targetRef="Merge_Reject"/>
+    <bpmn:sequenceFlow id="Process_Retrain_F19" sourceRef="Merge_Reject" targetRef="Check_Model"/>
+    <bpmn:sequenceFlow id="Process_Retrain_F20" sourceRef="Check_Model" targetRef="Notify_Reject"/>
+    <bpmn:sequenceFlow id="Process_Retrain_F21" sourceRef="Notify_Reject" targetRef="Model_State"/>
+    <bpmn:sequenceFlow id="Process_Retrain_F22" sourceRef="Model_State" targetRef="End_Kept" name="Исправна">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">Активная версия совпадает с зафиксированной на этапе 1, загружается и соответствует паре и контракту признаков</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Process_Retrain_F23" sourceRef="Model_State" targetRef="End_NoModel" name="Модели нет">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">Указатель прочитан и пуст; активной версии не было и на этапе 1</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Process_Retrain_F24" sourceRef="Model_State" targetRef="Merge_Recover" name="Не подтверждена"/>
+    <bpmn:sequenceFlow id="Process_Retrain_F25" sourceRef="Merge_Recover" targetRef="Recover"/>
   </bpmn:process>
   <bpmn:collaboration id="Collaboration_Retrain">
     <bpmn:participant id="Participant_DBMonitor" name="DB Monitor — управление моделями" processRef="Process_Retrain"/>
@@ -372,7 +447,7 @@ AUC_min, достаточный объём контроля и правила с
   <bpmndi:BPMNDiagram id="Process_Retrain_Diagram" name="01 / Автоматическое переобучение">
     <bpmndi:BPMNPlane id="Process_Retrain_Plane" bpmnElement="Collaboration_Retrain">
       <bpmndi:BPMNShape id="Participant_DBMonitor_DI" bpmnElement="Participant_DBMonitor" isHorizontal="false">
-        <dc:Bounds x="40" y="130" width="1140" height="1170"/>
+        <dc:Bounds x="40" y="130" width="1500" height="1590"/>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Start_Timer_DI" bpmnElement="Start_Timer">
         <dc:Bounds x="140" y="280" width="40" height="40"/>
@@ -407,7 +482,7 @@ AUC_min, достаточный объём контроля и правила с
       <bpmndi:BPMNShape id="Inspect_Error_DI" bpmnElement="Inspect_Error">
         <dc:Bounds x="530" y="500" width="40" height="40"/>
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="585" y="500" width="90" height="25"/>
+          <dc:Bounds x="585" y="492" width="90" height="25"/>
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Pending_DI" bpmnElement="Pending" isMarkerVisible="true">
@@ -417,36 +492,78 @@ AUC_min, достаточный объём контроля и правила с
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Merge_Failure_DI" bpmnElement="Merge_Failure" isMarkerVisible="true">
-        <dc:Bounds x="873" y="608" width="54" height="54"/>
+        <dc:Bounds x="1283" y="608" width="54" height="54"/>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Publish_DI" bpmnElement="Publish" isExpanded="false">
         <dc:Bounds x="270" y="745" width="280" height="110"/>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Publish_Error_DI" bpmnElement="Publish_Error">
-        <dc:Bounds x="530" y="810" width="40" height="40"/>
+        <dc:Bounds x="530" y="780" width="40" height="40"/>
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="570" y="775" width="165" height="35"/>
+          <dc:Bounds x="595" y="772" width="110" height="25"/>
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Recover_DI" bpmnElement="Recover" isExpanded="false">
-        <dc:Bounds x="760" y="745" width="280" height="110"/>
+      <bpmndi:BPMNShape id="Publish_Early_DI" bpmnElement="Publish_Early">
+        <dc:Bounds x="480" y="835" width="40" height="40"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="575" y="875" width="230" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Result_DI" bpmnElement="Result" isMarkerVisible="true">
+        <dc:Bounds x="383" y="933" width="54" height="54"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="205" y="930" width="170" height="60"/>
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Notify_Success_DI" bpmnElement="Notify_Success">
-        <dc:Bounds x="270" y="945" width="280" height="100"/>
+        <dc:Bounds x="270" y="1060" width="280" height="100"/>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="End_Success_DI" bpmnElement="End_Success">
-        <dc:Bounds x="390" y="1130" width="40" height="40"/>
+        <dc:Bounds x="390" y="1230" width="40" height="40"/>
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="230" y="1190" width="360" height="85"/>
+          <dc:Bounds x="230" y="1290" width="360" height="85"/>
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Merge_Reject_DI" bpmnElement="Merge_Reject" isMarkerVisible="true">
+        <dc:Bounds x="833" y="933" width="54" height="54"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Check_Model_DI" bpmnElement="Check_Model">
+        <dc:Bounds x="720" y="1050" width="280" height="100"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Notify_Reject_DI" bpmnElement="Notify_Reject">
+        <dc:Bounds x="720" y="1210" width="280" height="100"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Model_State_DI" bpmnElement="Model_State" isMarkerVisible="true">
+        <dc:Bounds x="833" y="1393" width="54" height="54"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="665" y="1345" width="150" height="55"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Kept_DI" bpmnElement="End_Kept">
+        <dc:Bounds x="840" y="1560" width="40" height="40"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="680" y="1620" width="360" height="85"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_NoModel_DI" bpmnElement="End_NoModel">
+        <dc:Bounds x="420" y="1560" width="40" height="40"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="260" y="1620" width="360" height="85"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Merge_Recover_DI" bpmnElement="Merge_Recover" isMarkerVisible="true">
+        <dc:Bounds x="1283" y="773" width="54" height="54"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Recover_DI" bpmnElement="Recover" isExpanded="false">
+        <dc:Bounds x="1170" y="900" width="280" height="110"/>
+      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Notify_DI" bpmnElement="Notify">
-        <dc:Bounds x="760" y="945" width="280" height="100"/>
+        <dc:Bounds x="1170" y="1080" width="280" height="100"/>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="End_Handled_DI" bpmnElement="End_Handled">
-        <dc:Bounds x="880" y="1130" width="40" height="40"/>
+        <dc:Bounds x="1290" y="1230" width="40" height="40"/>
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="720" y="1190" width="360" height="85"/>
+          <dc:Bounds x="1130" y="1290" width="360" height="85"/>
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Process_Retrain_F01_DI" bpmnElement="Process_Retrain_F01">
@@ -482,8 +599,8 @@ AUC_min, достаточный объём контроля и правила с
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Process_Retrain_F07_DI" bpmnElement="Process_Retrain_F07">
         <di:waypoint x="570" y="520.0"/>
-        <di:waypoint x="900" y="520"/>
-        <di:waypoint x="900.0" y="608"/>
+        <di:waypoint x="1310" y="520"/>
+        <di:waypoint x="1310.0" y="608"/>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Process_Retrain_F08_DI" bpmnElement="Process_Retrain_F08">
         <di:waypoint x="410.0" y="662"/>
@@ -494,40 +611,94 @@ AUC_min, достаточный объём контроля и правила с
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Process_Retrain_F09_DI" bpmnElement="Process_Retrain_F09">
         <di:waypoint x="437" y="635.0"/>
-        <di:waypoint x="873" y="635.0"/>
+        <di:waypoint x="1283" y="635.0"/>
         <bpmndi:BPMNLabel>
           <dc:Bounds x="590" y="605" width="150" height="25"/>
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Process_Retrain_F10_DI" bpmnElement="Process_Retrain_F10">
         <di:waypoint x="410.0" y="855"/>
-        <di:waypoint x="410.0" y="945"/>
+        <di:waypoint x="410.0" y="933"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Process_Retrain_F16_DI" bpmnElement="Process_Retrain_F16">
+        <di:waypoint x="410.0" y="987"/>
+        <di:waypoint x="410.0" y="1060"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="425" y="1010" width="50" height="25"/>
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Process_Retrain_F11_DI" bpmnElement="Process_Retrain_F11">
-        <di:waypoint x="410.0" y="1045"/>
-        <di:waypoint x="410.0" y="1130"/>
+        <di:waypoint x="410.0" y="1160"/>
+        <di:waypoint x="410.0" y="1230"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Process_Retrain_F17_DI" bpmnElement="Process_Retrain_F17">
+        <di:waypoint x="437" y="960.0"/>
+        <di:waypoint x="833" y="960.0"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="600" y="932" width="60" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Process_Retrain_F18_DI" bpmnElement="Process_Retrain_F18">
+        <di:waypoint x="500.0" y="875"/>
+        <di:waypoint x="500" y="905"/>
+        <di:waypoint x="860" y="905"/>
+        <di:waypoint x="860.0" y="933"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Process_Retrain_F19_DI" bpmnElement="Process_Retrain_F19">
+        <di:waypoint x="860.0" y="987"/>
+        <di:waypoint x="860.0" y="1050"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Process_Retrain_F20_DI" bpmnElement="Process_Retrain_F20">
+        <di:waypoint x="860.0" y="1150"/>
+        <di:waypoint x="860.0" y="1210"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Process_Retrain_F21_DI" bpmnElement="Process_Retrain_F21">
+        <di:waypoint x="860.0" y="1310"/>
+        <di:waypoint x="860.0" y="1393"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Process_Retrain_F22_DI" bpmnElement="Process_Retrain_F22">
+        <di:waypoint x="860.0" y="1447"/>
+        <di:waypoint x="860.0" y="1560"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="875" y="1490" width="90" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Process_Retrain_F23_DI" bpmnElement="Process_Retrain_F23">
+        <di:waypoint x="833" y="1420.0"/>
+        <di:waypoint x="440" y="1420"/>
+        <di:waypoint x="440.0" y="1560"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="540" y="1390" width="110" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Process_Retrain_F24_DI" bpmnElement="Process_Retrain_F24">
+        <di:waypoint x="887" y="1420.0"/>
+        <di:waypoint x="1500" y="1420"/>
+        <di:waypoint x="1500" y="800"/>
+        <di:waypoint x="1337" y="800.0"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="930" y="1390" width="150" height="25"/>
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Process_Retrain_F12_DI" bpmnElement="Process_Retrain_F12">
-        <di:waypoint x="570" y="830.0"/>
-        <di:waypoint x="680" y="830"/>
-        <di:waypoint x="680" y="690"/>
-        <di:waypoint x="900" y="690"/>
-        <di:waypoint x="900.0" y="662"/>
+        <di:waypoint x="570" y="800.0"/>
+        <di:waypoint x="1283" y="800.0"/>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Process_Retrain_F13_DI" bpmnElement="Process_Retrain_F13">
-        <di:waypoint x="927" y="635.0"/>
-        <di:waypoint x="1100" y="635"/>
-        <di:waypoint x="1100" y="710"/>
-        <di:waypoint x="900" y="710"/>
-        <di:waypoint x="900.0" y="745"/>
+        <di:waypoint x="1310.0" y="662"/>
+        <di:waypoint x="1310.0" y="773"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Process_Retrain_F25_DI" bpmnElement="Process_Retrain_F25">
+        <di:waypoint x="1310.0" y="827"/>
+        <di:waypoint x="1310.0" y="900"/>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Process_Retrain_F14_DI" bpmnElement="Process_Retrain_F14">
-        <di:waypoint x="900.0" y="855"/>
-        <di:waypoint x="900.0" y="945"/>
+        <di:waypoint x="1310.0" y="1010"/>
+        <di:waypoint x="1310.0" y="1080"/>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Process_Retrain_F15_DI" bpmnElement="Process_Retrain_F15">
-        <di:waypoint x="900.0" y="1045"/>
-        <di:waypoint x="900.0" y="1130"/>
+        <di:waypoint x="1310.0" y="1180"/>
+        <di:waypoint x="1310.0" y="1230"/>
       </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>
@@ -537,7 +708,7 @@ AUC_min, достаточный объём контроля и правила с
         <dc:Bounds x="40" y="130" width="700" height="2300"/>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Lane_Human_DI" bpmnElement="Lane_Human" isHorizontal="false">
-        <dc:Bounds x="740" y="130" width="440" height="2300"/>
+        <dc:Bounds x="740" y="130" width="560" height="2300"/>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="P_Start_DI" bpmnElement="P_Start">
         <dc:Bounds x="370" y="205" width="40" height="40"/>
@@ -618,6 +789,18 @@ AUC_min, достаточный объём контроля и правила с
         <dc:Bounds x="940" y="1380" width="40" height="40"/>
         <bpmndi:BPMNLabel>
           <dc:Bounds x="805" y="1440" width="310" height="60"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="P_Review_Timeout_DI" bpmnElement="P_Review_Timeout">
+        <dc:Bounds x="1085" y="1080" width="40" height="40"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1135" y="1045" width="110" height="50"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="P_RejectTimeout_DI" bpmnElement="P_RejectTimeout">
+        <dc:Bounds x="1210" y="1380" width="40" height="40"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1170" y="1440" width="120" height="60"/>
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="P_RejectScores_DI" bpmnElement="P_RejectScores">
@@ -723,6 +906,11 @@ AUC_min, достаточный объём контроля и правила с
       <bpmndi:BPMNEdge id="Publish_F18_DI" bpmnElement="Publish_F18">
         <di:waypoint x="390.0" y="2216"/>
         <di:waypoint x="390.0" y="2310"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Publish_F19_DI" bpmnElement="Publish_F19">
+        <di:waypoint x="1125" y="1100"/>
+        <di:waypoint x="1230" y="1100"/>
+        <di:waypoint x="1230" y="1380"/>
       </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>
