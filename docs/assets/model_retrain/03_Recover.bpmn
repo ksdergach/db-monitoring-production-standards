@@ -1,0 +1,930 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_Retrain" targetNamespace="https://github.com/ksdergach/db-monitoring-production-standards/bpmn/retrain" exporter="DB Monitor homework diagram builder" exporterVersion="1.0" expressionLanguage="urn:db-monitor:descriptive-conditions">
+  <bpmn:error id="Error_Rejected" name="Публикация отклонена" errorCode="RetrainRejected"/>
+  <bpmn:process id="Process_Retrain" name="Переобучение модели DB Monitor" isExecutable="false">
+    <bpmn:documentation>Предлагаемый процесс. Не подключён к BPMN-движку. Условия и расписание описательные. Обязательное сравнение ROC-AUC на независимом размеченном контроле, дополнительные проверки и валидация человеком предшествуют публикации. Внешний диспетчер должен предотвращать конкурентные попытки для одной пары; обычные запросы и сигнал дрейфа не запускают повтор в режиме отказа. Ошибки сервисных задач должны быть отображены в BPMN Error; такая интеграция пока не реализована.</bpmn:documentation>
+    <bpmn:startEvent id="Start_Timer" name="Каждую ночь&#10;в 04:00">
+      <bpmn:documentation>Часовой пояс планировщика сервера. Для каждой пары создаётся отдельный экземпляр процесса.</bpmn:documentation>
+      <bpmn:outgoing>Process_Retrain_F01</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="Start_Timer_Definition">
+        <bpmn:timeCycle xsi:type="bpmn:tFormalExpression">Ежедневно в 04:00 по часовому поясу планировщика</bpmn:timeCycle>
+      </bpmn:timerEventDefinition>
+    </bpmn:startEvent>
+    <bpmn:startEvent id="Start_Manual" name="Явный ручной&#10;запуск">
+      <bpmn:outgoing>Process_Retrain_F02</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:startEvent id="Start_Missing" name="Нет модели;&#10;нет режима отказа">
+      <bpmn:outgoing>Process_Retrain_F03</bpmn:outgoing>
+      <bpmn:conditionalEventDefinition id="Start_Missing_Definition">
+        <bpmn:condition xsi:type="bpmn:tFormalExpression">Нет модели; нет режима отказа</bpmn:condition>
+      </bpmn:conditionalEventDefinition>
+    </bpmn:startEvent>
+    <bpmn:startEvent id="Start_Change" name="Подтверждён дрейф;&#10;нет режима отказа">
+      <bpmn:documentation>Предлагаемый внешний мониторинг подтверждает дрейф распределения данных по согласованному правилу, например с помощью PSI/KS. Порог задаётся для проекта заранее. Это отдельный триггер, не переименование точки излома. После отказа повтор разрешён только ночью или вручную.</bpmn:documentation>
+      <bpmn:outgoing>Process_Retrain_F04</bpmn:outgoing>
+      <bpmn:conditionalEventDefinition id="Start_Change_Definition">
+        <bpmn:condition xsi:type="bpmn:tFormalExpression">Подтверждён дрейф; нет режима отказа</bpmn:condition>
+      </bpmn:conditionalEventDefinition>
+    </bpmn:startEvent>
+    <bpmn:exclusiveGateway id="Merge_Start" gatewayDirection="Converging">
+      <bpmn:incoming>Process_Retrain_F01</bpmn:incoming>
+      <bpmn:incoming>Process_Retrain_F02</bpmn:incoming>
+      <bpmn:incoming>Process_Retrain_F03</bpmn:incoming>
+      <bpmn:incoming>Process_Retrain_F04</bpmn:incoming>
+      <bpmn:outgoing>Process_Retrain_F05</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="Inspect" name="1. Определить состояние&#10;и зафиксировать контекст" implementation="##unspecified">
+      <bpmn:documentation>Определить фактическую активную версию и режим отказа. Зафиксировать прежнюю модель и контекст попытки. Окно пересчёта здесь ещё не задаётся: оно фиксируется после решения инженера перед переключением. При повторе восстановления использовать сохранённый контекст. Ошибку чтения передать как BPMN Error.</bpmn:documentation>
+      <bpmn:incoming>Process_Retrain_F05</bpmn:incoming>
+      <bpmn:outgoing>Process_Retrain_F06</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:boundaryEvent id="Inspect_Error" name="Ошибка" attachedToRef="Inspect" cancelActivity="true">
+      <bpmn:outgoing>Process_Retrain_F07</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="Inspect_Error_Definition"/>
+    </bpmn:boundaryEvent>
+    <bpmn:exclusiveGateway id="Pending" name="Восстановление&#10;не завершено?" gatewayDirection="Diverging" default="Process_Retrain_F08">
+      <bpmn:incoming>Process_Retrain_F06</bpmn:incoming>
+      <bpmn:outgoing>Process_Retrain_F08</bpmn:outgoing>
+      <bpmn:outgoing>Process_Retrain_F09</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:exclusiveGateway id="Merge_Failure" gatewayDirection="Converging">
+      <bpmn:incoming>Process_Retrain_F07</bpmn:incoming>
+      <bpmn:incoming>Process_Retrain_F09</bpmn:incoming>
+      <bpmn:incoming>Process_Retrain_F12</bpmn:incoming>
+      <bpmn:outgoing>Process_Retrain_F13</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:subProcess id="Publish" name="2–7. Подготовить кандидата,&#10;проверить и опубликовать&#10;Подробности — схема 02">
+      <bpmn:documentation>Встроенный подпроцесс. Только успешное завершение разрешает успешный конец основного процесса. Ошибки и отклонения передаются граничному событию.</bpmn:documentation>
+      <bpmn:incoming>Process_Retrain_F08</bpmn:incoming>
+      <bpmn:outgoing>Process_Retrain_F10</bpmn:outgoing>
+      <bpmn:laneSet id="Publish_Lanes">
+        <bpmn:lane id="Lane_Auto" name="Автоматизация DB Monitor">
+          <bpmn:flowNodeRef>P_Start</bpmn:flowNodeRef>
+          <bpmn:flowNodeRef>P_Data</bpmn:flowNodeRef>
+          <bpmn:flowNodeRef>P_Data_OK</bpmn:flowNodeRef>
+          <bpmn:flowNodeRef>P_Train</bpmn:flowNodeRef>
+          <bpmn:flowNodeRef>P_Quality</bpmn:flowNodeRef>
+          <bpmn:flowNodeRef>P_Quality_OK</bpmn:flowNodeRef>
+          <bpmn:flowNodeRef>P_Register</bpmn:flowNodeRef>
+          <bpmn:flowNodeRef>P_Window</bpmn:flowNodeRef>
+          <bpmn:flowNodeRef>P_Deploy</bpmn:flowNodeRef>
+          <bpmn:flowNodeRef>P_Scores</bpmn:flowNodeRef>
+          <bpmn:flowNodeRef>P_Coherent</bpmn:flowNodeRef>
+          <bpmn:flowNodeRef>P_Resume</bpmn:flowNodeRef>
+          <bpmn:flowNodeRef>P_End</bpmn:flowNodeRef>
+          <bpmn:flowNodeRef>P_RejectData</bpmn:flowNodeRef>
+          <bpmn:flowNodeRef>P_RejectQuality</bpmn:flowNodeRef>
+          <bpmn:flowNodeRef>P_RejectScores</bpmn:flowNodeRef>
+        </bpmn:lane>
+        <bpmn:lane id="Lane_Human" name="Инженер / владелец модели">
+          <bpmn:flowNodeRef>P_Review</bpmn:flowNodeRef>
+          <bpmn:flowNodeRef>P_Approved</bpmn:flowNodeRef>
+          <bpmn:flowNodeRef>P_RejectHuman</bpmn:flowNodeRef>
+        </bpmn:lane>
+      </bpmn:laneSet>
+      <bpmn:startEvent id="P_Start" name="Вход из схемы 01">
+        <bpmn:outgoing>Publish_F01</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:serviceTask id="P_Data" name="2. Подготовить признаки&#10;и независимый&#10;размеченный контроль" implementation="##unspecified">
+        <bpmn:documentation>Признаки row_count, null_rate, d_row_count, d_null_rate; история обучения из окна 60 дней. Проверить конечность чисел и диапазоны. После отделения контроля минимум 200 строк обучающих признаков. Контроль содержит оба класса: нормальные точки и известные аномалии. Он не входит в обучение ни кандидата, ни прежней модели; происхождение и границы выборок подтверждены. Отделение последних 14 дней только от нового обучения не доказывает независимость от прежней модели. Без независимой разметки или утверждённого до оценки AUC_min отказ от публикации.</bpmn:documentation>
+        <bpmn:incoming>Publish_F01</bpmn:incoming>
+        <bpmn:outgoing>Publish_F02</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:exclusiveGateway id="P_Data_OK" name="Данные и разметка&#10;пригодны и достаточны?" gatewayDirection="Diverging" default="Publish_F04">
+        <bpmn:incoming>Publish_F02</bpmn:incoming>
+        <bpmn:outgoing>Publish_F03</bpmn:outgoing>
+        <bpmn:outgoing>Publish_F04</bpmn:outgoing>
+      </bpmn:exclusiveGateway>
+      <bpmn:serviceTask id="P_Train" name="3. Обучить кандидата:&#10;StandardScaler +&#10;Isolation Forest" implementation="##unspecified">
+        <bpmn:documentation>Обучить новую пару модель + scaler отдельно от рабочего файла. Предыдущую версию сохранить.</bpmn:documentation>
+        <bpmn:incoming>Publish_F03</bpmn:incoming>
+        <bpmn:outgoing>Publish_F05</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:serviceTask id="P_Quality" name="4. Рассчитать ROC-AUC;&#10;сравнить две версии;&#10;проверить сценарии" implementation="##unspecified">
+        <bpmn:documentation>Согласованное правило допуска, 1 ноября 2026 года.
+Сравниваются прежняя пригодная версия Isolation Forest и новый кандидат для одной пары «проект, таблица», каждый со своим StandardScaler.
+Обе модели оценивают одни и те же независимые контрольные точки с заранее известными метками: 0 — норма, 1 — аномалия. Контроль не входит в обучение ни одной из моделей и содержит оба класса. Отсутствие независимой разметки, неизвестное происхождение контроля или ошибка расчёта блокируют публикацию.
+ROC-AUC считается по непрерывной степени аномальности. В проекте score = IsolationForest.decision_function, меньшее значение означает большую аномальность, поэтому для положительного класса «аномалия» используется -score. Бинарные is_anomaly и собственные предсказания модели не заменяют независимую разметку.
+При наличии пригодной прежней модели кандидат допускается к ручной валидации только если AUC_new &gt; AUC_old, AUC_new &gt;= AUC_min и остальные обязательные проверки пройдены. При равенстве или меньшем AUC новая версия не публикуется; сохранение прежней рабочей версии подтверждается подпроцессом восстановления.
+AUC_min, достаточный объём контроля и правила сценариев утверждаются до оценки кандидата. Численные значения порогов в этой работе не устанавливались; пример 0,8 из лекции не выдаётся за обоснованный порог DB Monitor.
+При первом запуске или отсутствии пригодной прежней версии сравнительный AUC не вычисляется: отсутствие базы фиксируется. AUC кандидата и абсолютные критерии, утверждённые заранее, всё равно обязательны; инженер отдельно одобряет первый допуск.
+Дополнительные сценарии: нормальный ряд без чрезмерного числа тревог и обнаружение известного всплеска; контроль соответствует масштабу конкретной таблицы. Предварительные ограничения из исходного предложения требуют проверки и утверждения инженером. Небольшая разница AUC сама по себе не доказывает устойчивого улучшения.
+Синтетический независимый контроль допустим как явно обозначенный учебный сценарий; его результат не подтверждает эксплуатационное качество. Пригодность сценариев утверждает инженер до использования в допуске.
+После автоматического допуска обязательно явное одобрение инженера (User Task). Ожидание ответа не является одобрением; отсутствие AUC нельзя обойти ручным согласием.
+Это проект процесса: контрольная разметка не подготовлена, модели не обучались и значения AUC не измерялись в рамках подготовки схемы.</bpmn:documentation>
+        <bpmn:incoming>Publish_F05</bpmn:incoming>
+        <bpmn:outgoing>Publish_F06</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:exclusiveGateway id="P_Quality_OK" name="Кандидат выбран по AUC&#10;и проверки пройдены?" gatewayDirection="Diverging" default="Publish_F08">
+        <bpmn:incoming>Publish_F06</bpmn:incoming>
+        <bpmn:outgoing>Publish_F07</bpmn:outgoing>
+        <bpmn:outgoing>Publish_F08</bpmn:outgoing>
+      </bpmn:exclusiveGateway>
+      <bpmn:userTask id="P_Review" name="5. Проверить данные,&#10;метрики и ограничения;&#10;одобрить или отклонить">
+        <bpmn:documentation>Обязательная валидация человеком после автоматического допуска. Инженер изучает независимость и разметку контроля, сравнение ROC-AUC, сценарии, ложные тревоги, величину прироста и ограничения. Для первого запуска проверяет выполнение заранее утверждённых абсолютных критериев. Сохраняет решение и обоснование. Отсутствие AUC нельзя одобрить в обход обязательной проверки. До решения процесс ожидает; ожидание не является согласием. Рабочая оценка при этом не приостанавливается.</bpmn:documentation>
+        <bpmn:incoming>Publish_F07</bpmn:incoming>
+        <bpmn:outgoing>Publish_F09</bpmn:outgoing>
+      </bpmn:userTask>
+      <bpmn:exclusiveGateway id="P_Approved" name="Инженер&#10;одобрил?" gatewayDirection="Diverging" default="Publish_F11">
+        <bpmn:incoming>Publish_F09</bpmn:incoming>
+        <bpmn:outgoing>Publish_F10</bpmn:outgoing>
+        <bpmn:outgoing>Publish_F11</bpmn:outgoing>
+      </bpmn:exclusiveGateway>
+      <bpmn:serviceTask id="P_Register" name="6. Сохранить версию,&#10;метаданные, отчёт&#10;и решение инженера" implementation="##unspecified">
+        <bpmn:documentation>Отдельный артефакт модели и scaler; проект/таблица; версии кода и библиотек; границы выборок; параметры; результаты контроля; автор и время валидации. Хранить прежние версии.</bpmn:documentation>
+        <bpmn:incoming>Publish_F10</bpmn:incoming>
+        <bpmn:outgoing>Publish_F12</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:serviceTask id="P_Window" name="7. Проверить артефакт;&#10;приостановить оценку;&#10;задать окно 14 дней" implementation="##unspecified">
+        <bpmn:documentation>Выполнять только после явного одобрения инженера и регистрации версии. Проверить загрузку артефакта и контракт признаков. Для пары приостановить обычную оценку и смену версии, дождаться начатых операций и проверить актуальность решения и исходного контекста. Затем взять текущее время конца окна и последние 14 дней перед ним. До попытки переключения сохранить границы окна и прежнюю версию в контексте восстановления. Ошибка проверки или сохранения запрещает переключение и передаётся как BPMN Error. На повторе восстановления использовать сохранённые границы, не выбирать новое окно.</bpmn:documentation>
+        <bpmn:incoming>Publish_F12</bpmn:incoming>
+        <bpmn:outgoing>Publish_F13</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:serviceTask id="P_Deploy" name="7. Переключить версию;&#10;подтвердить результат" implementation="##unspecified">
+        <bpmn:documentation>Под сохраняющейся блокировкой повторно подтвердить неизменность одобренного контекста, использовать сохранённое окно и переключить активный указатель. Подтвердить фактически выбранную версию. Ошибку или неизвестный результат передать как BPMN Error. Рабочая версия не меняется, пока окно не сохранено.</bpmn:documentation>
+        <bpmn:incoming>Publish_F13</bpmn:incoming>
+        <bpmn:outgoing>Publish_F14</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:serviceTask id="P_Scores" name="7. Пересчитать и сохранить&#10;фиксированное окно&#10;14 дней" implementation="##unspecified">
+        <bpmn:documentation>Служебный пересчёт выбранной моделью только за окно, сохранённое перед переключением после решения инженера. Подтвердить полноту, принадлежность результатов версии, проекту, таблице и этому окну. Не смешивать результаты разных моделей.</bpmn:documentation>
+        <bpmn:incoming>Publish_F14</bpmn:incoming>
+        <bpmn:outgoing>Publish_F15</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:exclusiveGateway id="P_Coherent" name="Оценки&#10;согласованы?" gatewayDirection="Diverging" default="Publish_F17">
+        <bpmn:incoming>Publish_F15</bpmn:incoming>
+        <bpmn:outgoing>Publish_F16</bpmn:outgoing>
+        <bpmn:outgoing>Publish_F17</bpmn:outgoing>
+      </bpmn:exclusiveGateway>
+      <bpmn:serviceTask id="P_Resume" name="Разрешить обычную оценку" implementation="##unspecified">
+        <bpmn:incoming>Publish_F16</bpmn:incoming>
+        <bpmn:outgoing>Publish_F18</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:endEvent id="P_End" name="Новая версия и оценки&#10;подтверждены">
+        <bpmn:incoming>Publish_F18</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:endEvent id="P_RejectData" name="Данные / разметка&#10;не допущены">
+        <bpmn:documentation>BPMN Error RetrainRejected. Прерывает подпроцесс Publish; перехватывается событием Publish_Error на схеме 01. Ошибки сервисных задач также передаются в BPMN Error и перехватываются там.</bpmn:documentation>
+        <bpmn:incoming>Publish_F04</bpmn:incoming>
+        <bpmn:errorEventDefinition id="P_RejectData_Definition" errorRef="Error_Rejected"/>
+      </bpmn:endEvent>
+      <bpmn:endEvent id="P_RejectQuality" name="Кандидат не лучше /&#10;проверки не пройдены">
+        <bpmn:documentation>BPMN Error RetrainRejected. Прерывает подпроцесс Publish; перехватывается событием Publish_Error на схеме 01. Ошибки сервисных задач также передаются в BPMN Error и перехватываются там.</bpmn:documentation>
+        <bpmn:incoming>Publish_F08</bpmn:incoming>
+        <bpmn:errorEventDefinition id="P_RejectQuality_Definition" errorRef="Error_Rejected"/>
+      </bpmn:endEvent>
+      <bpmn:endEvent id="P_RejectHuman" name="Инженер отклонил&#10;публикацию">
+        <bpmn:documentation>BPMN Error RetrainRejected. Прерывает подпроцесс Publish; перехватывается событием Publish_Error на схеме 01. Ошибки сервисных задач также передаются в BPMN Error и перехватываются там.</bpmn:documentation>
+        <bpmn:incoming>Publish_F11</bpmn:incoming>
+        <bpmn:errorEventDefinition id="P_RejectHuman_Definition" errorRef="Error_Rejected"/>
+      </bpmn:endEvent>
+      <bpmn:endEvent id="P_RejectScores" name="Оценки&#10;не согласованы">
+        <bpmn:documentation>BPMN Error RetrainRejected. Прерывает подпроцесс Publish; перехватывается событием Publish_Error на схеме 01. Ошибки сервисных задач также передаются в BPMN Error и перехватываются там.</bpmn:documentation>
+        <bpmn:incoming>Publish_F17</bpmn:incoming>
+        <bpmn:errorEventDefinition id="P_RejectScores_Definition" errorRef="Error_Rejected"/>
+      </bpmn:endEvent>
+      <bpmn:sequenceFlow id="Publish_F01" sourceRef="P_Start" targetRef="P_Data"/>
+      <bpmn:sequenceFlow id="Publish_F02" sourceRef="P_Data" targetRef="P_Data_OK"/>
+      <bpmn:sequenceFlow id="Publish_F03" sourceRef="P_Data_OK" targetRef="P_Train" name="Да">
+        <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">Корректность и достаточность обучения, независимость размеченного контроля с обоими классами и наличие предварительно утверждённых правил допуска подтверждены</bpmn:conditionExpression>
+      </bpmn:sequenceFlow>
+      <bpmn:sequenceFlow id="Publish_F04" sourceRef="P_Data_OK" targetRef="P_RejectData" name="Нет"/>
+      <bpmn:sequenceFlow id="Publish_F05" sourceRef="P_Train" targetRef="P_Quality"/>
+      <bpmn:sequenceFlow id="Publish_F06" sourceRef="P_Quality" targetRef="P_Quality_OK"/>
+      <bpmn:sequenceFlow id="Publish_F07" sourceRef="P_Quality_OK" targetRef="P_Review" name="Да">
+        <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">AUC кандидата рассчитан и не ниже заранее утверждённого AUC_min; все обязательные проверки пройдены; при наличии пригодной прежней модели AUC кандидата строго больше её AUC на том же контроле. При первом запуске сравнение отсутствует и явно зафиксировано, абсолютный контроль обязателен.</bpmn:conditionExpression>
+      </bpmn:sequenceFlow>
+      <bpmn:sequenceFlow id="Publish_F08" sourceRef="P_Quality_OK" targetRef="P_RejectQuality" name="Нет"/>
+      <bpmn:sequenceFlow id="Publish_F09" sourceRef="P_Review" targetRef="P_Approved"/>
+      <bpmn:sequenceFlow id="Publish_F10" sourceRef="P_Approved" targetRef="P_Register" name="Да">
+        <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">Инженер сохранил явное одобрение</bpmn:conditionExpression>
+      </bpmn:sequenceFlow>
+      <bpmn:sequenceFlow id="Publish_F11" sourceRef="P_Approved" targetRef="P_RejectHuman" name="Нет"/>
+      <bpmn:sequenceFlow id="Publish_F12" sourceRef="P_Register" targetRef="P_Window"/>
+      <bpmn:sequenceFlow id="Publish_F13" sourceRef="P_Window" targetRef="P_Deploy"/>
+      <bpmn:sequenceFlow id="Publish_F14" sourceRef="P_Deploy" targetRef="P_Scores"/>
+      <bpmn:sequenceFlow id="Publish_F15" sourceRef="P_Scores" targetRef="P_Coherent"/>
+      <bpmn:sequenceFlow id="Publish_F16" sourceRef="P_Coherent" targetRef="P_Resume" name="Да">
+        <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">Полнота и принадлежность всех оценок подтверждены</bpmn:conditionExpression>
+      </bpmn:sequenceFlow>
+      <bpmn:sequenceFlow id="Publish_F17" sourceRef="P_Coherent" targetRef="P_RejectScores" name="Нет"/>
+      <bpmn:sequenceFlow id="Publish_F18" sourceRef="P_Resume" targetRef="P_End"/>
+    </bpmn:subProcess>
+    <bpmn:boundaryEvent id="Publish_Error" name="Ошибка / отказ" attachedToRef="Publish" cancelActivity="true">
+      <bpmn:outgoing>Process_Retrain_F12</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="Publish_Error_Definition"/>
+    </bpmn:boundaryEvent>
+    <bpmn:subProcess id="Recover" name="8. Восстановить безопасное&#10;состояние модели и оценок&#10;Подробности — схема 03">
+      <bpmn:documentation>Встроенный подпроцесс с четырьмя возможными исходами R1–R4. Перед переключением режима подтверждается фактическое состояние.</bpmn:documentation>
+      <bpmn:incoming>Process_Retrain_F13</bpmn:incoming>
+      <bpmn:outgoing>Process_Retrain_F14</bpmn:outgoing>
+      <bpmn:startEvent id="R_Start" name="Вход из схемы 01">
+        <bpmn:outgoing>Recover_F01</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:serviceTask id="R_Pause" name="Приостановить обычную оценку&#10;и смену версии; дождаться&#10;начатых операций" implementation="##unspecified">
+        <bpmn:documentation>Блокировка для пары проект/таблица должна быть подтверждена. Служебное восстановление разрешено. Если подтвердить блокировку нельзя, требуется операционный инцидент вне гарантируемых R1–R4; модель не объявляется безопасной.</bpmn:documentation>
+        <bpmn:incoming>Recover_F01</bpmn:incoming>
+        <bpmn:outgoing>Recover_F02</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:serviceTask id="R_Inspect" name="Записать причину отказа;&#10;определить активную версию&#10;и пригодность прежней" implementation="##unspecified">
+        <bpmn:documentation>Прежняя версия — модель до попытки обновления, не кандидат. Проверить загрузку, проект/таблицу и контракт признаков. Неудача чтения указателя сохраняется как неизвестное состояние; отсутствие доказательства пригодности означает ветку Нет.</bpmn:documentation>
+        <bpmn:incoming>Recover_F02</bpmn:incoming>
+        <bpmn:outgoing>Recover_F03</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:exclusiveGateway id="R_Previous" name="Прежняя модель&#10;есть и пригодна?" gatewayDirection="Diverging" default="Recover_F05">
+        <bpmn:incoming>Recover_F03</bpmn:incoming>
+        <bpmn:outgoing>Recover_F04</bpmn:outgoing>
+        <bpmn:outgoing>Recover_F05</bpmn:outgoing>
+      </bpmn:exclusiveGateway>
+      <bpmn:serviceTask id="R_Select" name="Подтвердить или восстановить&#10;выбор прежней версии;&#10;проверить загрузку" implementation="##unspecified">
+        <bpmn:documentation>Если прежняя версия уже выбрана, подтвердить выбор без лишнего переключения. Иначе восстановить указатель. Ошибки операции и проверки возвращаются статусом; отдельно записать ошибку восстановления модели.</bpmn:documentation>
+        <bpmn:incoming>Recover_F04</bpmn:incoming>
+        <bpmn:outgoing>Recover_F06</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:exclusiveGateway id="R_Loaded" name="Прежняя версия&#10;выбрана и загружается?" gatewayDirection="Diverging" default="Recover_F08">
+        <bpmn:incoming>Recover_F06</bpmn:incoming>
+        <bpmn:outgoing>Recover_F07</bpmn:outgoing>
+        <bpmn:outgoing>Recover_F08</bpmn:outgoing>
+      </bpmn:exclusiveGateway>
+      <bpmn:serviceTask id="R_Scores" name="Проверить прежние оценки;&#10;при необходимости пересчитать&#10;исходное окно 14 дней" implementation="##unspecified">
+        <bpmn:documentation>Использовать сохранённое окно этой попытки. Если до переключения окно ещё не было задано и подтверждено отсутствие попытки активации, определить последние 14 дней после остановки операций и сохранить границы для повторов. После возможного переключения неизвестное окно нельзя подменять новым: согласованность не подтверждена, требуется R2 при доступной прежней модели. Если оценки уже полны и согласованы с прежней версией и сохранённым окном, не пересчитывать; иначе пересчитать его без сдвига границ. Ошибки проверки, пересчёта или записи также возвращаются как неподтверждённая согласованность.</bpmn:documentation>
+        <bpmn:incoming>Recover_F07</bpmn:incoming>
+        <bpmn:outgoing>Recover_F16</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:exclusiveGateway id="R_Coherent" name="Оценки прежней модели&#10;согласованы?" gatewayDirection="Diverging" default="Recover_F18">
+        <bpmn:incoming>Recover_F16</bpmn:incoming>
+        <bpmn:outgoing>Recover_F17</bpmn:outgoing>
+        <bpmn:outgoing>Recover_F18</bpmn:outgoing>
+      </bpmn:exclusiveGateway>
+      <bpmn:serviceTask id="R_Resume" name="Разрешить обычную оценку;&#10;зафиксировать R1" implementation="##unspecified">
+        <bpmn:incoming>Recover_F17</bpmn:incoming>
+        <bpmn:outgoing>Recover_F19</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:endEvent id="R_End1" name="R1: прежняя модель&#10;и оценки подтверждены;&#10;обычная оценка разрешена">
+        <bpmn:incoming>Recover_F19</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:serviceTask id="R_LogScores" name="Записать ошибку оценок;&#10;сохранить блокировку;&#10;зафиксировать R2" implementation="##unspecified">
+        <bpmn:incoming>Recover_F18</bpmn:incoming>
+        <bpmn:outgoing>Recover_F20</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:endEvent id="R_End2" name="R2: прежняя модель доступна;&#10;оценки не согласованы;&#10;обычная оценка заблокирована">
+        <bpmn:incoming>Recover_F20</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:exclusiveGateway id="R_MergeOff" gatewayDirection="Converging">
+        <bpmn:incoming>Recover_F05</bpmn:incoming>
+        <bpmn:incoming>Recover_F08</bpmn:incoming>
+        <bpmn:outgoing>Recover_F09</bpmn:outgoing>
+      </bpmn:exclusiveGateway>
+      <bpmn:serviceTask id="R_Disable" name="Снять активный выбор;&#10;записать ошибку отключения,&#10;если операция не удалась" implementation="##unspecified">
+        <bpmn:documentation>Запретить использование кандидата. Артефакт можно сохранить для разбора. Ошибка отключения записывается отдельно, но не отменяет следующую проверку фактического указателя. Блокировка обычных операций сохраняется.</bpmn:documentation>
+        <bpmn:incoming>Recover_F09</bpmn:incoming>
+        <bpmn:outgoing>Recover_F10</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:serviceTask id="R_Read" name="Повторно прочитать&#10;фактический активный указатель" implementation="##unspecified">
+        <bpmn:documentation>Вернуть подтверждённое отсутствие версии, фактически выбранную версию либо неизвестное состояние. Ошибка чтения не означает успешное отключение.</bpmn:documentation>
+        <bpmn:incoming>Recover_F10</bpmn:incoming>
+        <bpmn:outgoing>Recover_F11</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:exclusiveGateway id="R_Empty" name="Отсутствие активной&#10;модели подтверждено?" gatewayDirection="Diverging" default="Recover_F13">
+        <bpmn:incoming>Recover_F11</bpmn:incoming>
+        <bpmn:outgoing>Recover_F12</bpmn:outgoing>
+        <bpmn:outgoing>Recover_F13</bpmn:outgoing>
+      </bpmn:exclusiveGateway>
+      <bpmn:serviceTask id="R_Set3" name="Зафиксировать R3;&#10;сохранить блокировку" implementation="##unspecified">
+        <bpmn:incoming>Recover_F12</bpmn:incoming>
+        <bpmn:outgoing>Recover_F14</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:serviceTask id="R_Set4" name="Записать фактическую версию&#10;или неизвестное состояние;&#10;сохранить блокировку; R4" implementation="##unspecified">
+        <bpmn:incoming>Recover_F13</bpmn:incoming>
+        <bpmn:outgoing>Recover_F15</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:endEvent id="R_End3" name="R3: активной модели нет;&#10;согласованных оценок нет;&#10;обычная оценка заблокирована">
+        <bpmn:incoming>Recover_F14</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:endEvent id="R_End4" name="R4: отключение&#10;не подтверждено;&#10;обычная оценка заблокирована">
+        <bpmn:incoming>Recover_F15</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:sequenceFlow id="Recover_F01" sourceRef="R_Start" targetRef="R_Pause"/>
+      <bpmn:sequenceFlow id="Recover_F02" sourceRef="R_Pause" targetRef="R_Inspect"/>
+      <bpmn:sequenceFlow id="Recover_F03" sourceRef="R_Inspect" targetRef="R_Previous"/>
+      <bpmn:sequenceFlow id="Recover_F04" sourceRef="R_Previous" targetRef="R_Select" name="Да">
+        <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">Прежний артефакт существует и его пригодность подтверждена</bpmn:conditionExpression>
+      </bpmn:sequenceFlow>
+      <bpmn:sequenceFlow id="Recover_F05" sourceRef="R_Previous" targetRef="R_MergeOff" name="Нет / не подтверждено"/>
+      <bpmn:sequenceFlow id="Recover_F06" sourceRef="R_Select" targetRef="R_Loaded"/>
+      <bpmn:sequenceFlow id="Recover_F07" sourceRef="R_Loaded" targetRef="R_Scores" name="Да">
+        <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">Выбор и загрузка прежней модели подтверждены</bpmn:conditionExpression>
+      </bpmn:sequenceFlow>
+      <bpmn:sequenceFlow id="Recover_F08" sourceRef="R_Loaded" targetRef="R_MergeOff" name="Нет / ошибка — записать в журнал"/>
+      <bpmn:sequenceFlow id="Recover_F09" sourceRef="R_MergeOff" targetRef="R_Disable"/>
+      <bpmn:sequenceFlow id="Recover_F10" sourceRef="R_Disable" targetRef="R_Read"/>
+      <bpmn:sequenceFlow id="Recover_F11" sourceRef="R_Read" targetRef="R_Empty"/>
+      <bpmn:sequenceFlow id="Recover_F12" sourceRef="R_Empty" targetRef="R_Set3" name="Да">
+        <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">Повторное чтение подтвердило отсутствие выбранной модели</bpmn:conditionExpression>
+      </bpmn:sequenceFlow>
+      <bpmn:sequenceFlow id="Recover_F13" sourceRef="R_Empty" targetRef="R_Set4" name="Нет / неизвестно"/>
+      <bpmn:sequenceFlow id="Recover_F14" sourceRef="R_Set3" targetRef="R_End3"/>
+      <bpmn:sequenceFlow id="Recover_F15" sourceRef="R_Set4" targetRef="R_End4"/>
+      <bpmn:sequenceFlow id="Recover_F16" sourceRef="R_Scores" targetRef="R_Coherent"/>
+      <bpmn:sequenceFlow id="Recover_F17" sourceRef="R_Coherent" targetRef="R_Resume" name="Да">
+        <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">Сохранённое окно подтверждено; оценки полны и принадлежат прежней версии и этому окну</bpmn:conditionExpression>
+      </bpmn:sequenceFlow>
+      <bpmn:sequenceFlow id="Recover_F18" sourceRef="R_Coherent" targetRef="R_LogScores" name="Нет / ошибка"/>
+      <bpmn:sequenceFlow id="Recover_F19" sourceRef="R_Resume" targetRef="R_End1"/>
+      <bpmn:sequenceFlow id="Recover_F20" sourceRef="R_LogScores" targetRef="R_End2"/>
+    </bpmn:subProcess>
+    <bpmn:serviceTask id="Notify_Success" name="Зафиксировать новую версию;&#10;уведомить инженера&#10;в Telegram" implementation="##unspecified">
+      <bpmn:documentation>После успешной публикации отправить версию, результаты проверок и решение инженера в настроенный Telegram. Ограничить ожидание доставки; ошибку или отсутствие настройки явно записать. Ошибка уведомления не отменяет успешный деплой. Для фактической доставки необходима настроенная интеграция.</bpmn:documentation>
+      <bpmn:incoming>Process_Retrain_F10</bpmn:incoming>
+      <bpmn:outgoing>Process_Retrain_F11</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="End_Success" name="Новая модель доступна;&#10;оценки согласованы;&#10;обычная оценка разрешена">
+      <bpmn:incoming>Process_Retrain_F11</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="Notify" name="Зафиксировать исход R1–R4;&#10;попробовать уведомить&#10;инженера в Telegram" implementation="##unspecified">
+      <bpmn:documentation>Сначала сохранить результат обработки. Уведомление при настроенном Telegram: ограниченное ожидание, ошибки доставки возвращаются статусом и записываются; отсутствие настройки также фиксируется. Уведомление не меняет исход восстановления и не снимает блокировку.</bpmn:documentation>
+      <bpmn:incoming>Process_Retrain_F14</bpmn:incoming>
+      <bpmn:outgoing>Process_Retrain_F15</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="End_Handled" name="Обработка отказа завершена;&#10;фактический исход — R1–R4&#10;(см. схему 03)">
+      <bpmn:incoming>Process_Retrain_F15</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Process_Retrain_F01" sourceRef="Start_Timer" targetRef="Merge_Start"/>
+    <bpmn:sequenceFlow id="Process_Retrain_F02" sourceRef="Start_Manual" targetRef="Merge_Start"/>
+    <bpmn:sequenceFlow id="Process_Retrain_F03" sourceRef="Start_Missing" targetRef="Merge_Start"/>
+    <bpmn:sequenceFlow id="Process_Retrain_F04" sourceRef="Start_Change" targetRef="Merge_Start"/>
+    <bpmn:sequenceFlow id="Process_Retrain_F05" sourceRef="Merge_Start" targetRef="Inspect"/>
+    <bpmn:sequenceFlow id="Process_Retrain_F06" sourceRef="Inspect" targetRef="Pending"/>
+    <bpmn:sequenceFlow id="Process_Retrain_F07" sourceRef="Inspect_Error" targetRef="Merge_Failure"/>
+    <bpmn:sequenceFlow id="Process_Retrain_F08" sourceRef="Pending" targetRef="Publish" name="Нет"/>
+    <bpmn:sequenceFlow id="Process_Retrain_F09" sourceRef="Pending" targetRef="Merge_Failure" name="Да: R2 / R4">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">Предыдущий исход R2 или R4: восстановление не завершено</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Process_Retrain_F10" sourceRef="Publish" targetRef="Notify_Success"/>
+    <bpmn:sequenceFlow id="Process_Retrain_F11" sourceRef="Notify_Success" targetRef="End_Success"/>
+    <bpmn:sequenceFlow id="Process_Retrain_F12" sourceRef="Publish_Error" targetRef="Merge_Failure"/>
+    <bpmn:sequenceFlow id="Process_Retrain_F13" sourceRef="Merge_Failure" targetRef="Recover"/>
+    <bpmn:sequenceFlow id="Process_Retrain_F14" sourceRef="Recover" targetRef="Notify"/>
+    <bpmn:sequenceFlow id="Process_Retrain_F15" sourceRef="Notify" targetRef="End_Handled"/>
+  </bpmn:process>
+  <bpmn:collaboration id="Collaboration_Retrain">
+    <bpmn:participant id="Participant_DBMonitor" name="DB Monitor — управление моделями" processRef="Process_Retrain"/>
+  </bpmn:collaboration>
+  <bpmndi:BPMNDiagram id="Recover_Diagram" name="03 / Восстановление после отказа">
+    <bpmndi:BPMNPlane id="Recover_Plane" bpmnElement="Recover">
+      <bpmndi:BPMNShape id="R_Start_DI" bpmnElement="R_Start">
+        <dc:Bounds x="430" y="145" width="40" height="40"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="500" y="145" width="250" height="30"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="R_Pause_DI" bpmnElement="R_Pause">
+        <dc:Bounds x="300" y="240" width="300" height="100"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="R_Inspect_DI" bpmnElement="R_Inspect">
+        <dc:Bounds x="300" y="400" width="300" height="100"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="R_Previous_DI" bpmnElement="R_Previous" isMarkerVisible="true">
+        <dc:Bounds x="423" y="558" width="54" height="54"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="150" y="555" width="240" height="60"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="R_Select_DI" bpmnElement="R_Select">
+        <dc:Bounds x="300" y="700" width="300" height="100"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="R_Loaded_DI" bpmnElement="R_Loaded" isMarkerVisible="true">
+        <dc:Bounds x="423" y="863" width="54" height="54"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="125" y="860" width="270" height="65"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="R_Scores_DI" bpmnElement="R_Scores">
+        <dc:Bounds x="300" y="1010" width="300" height="105"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="R_Coherent_DI" bpmnElement="R_Coherent" isMarkerVisible="true">
+        <dc:Bounds x="423" y="1178" width="54" height="54"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="100" y="1135" width="280" height="60"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="R_Resume_DI" bpmnElement="R_Resume">
+        <dc:Bounds x="100" y="1345" width="300" height="86"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="R_End1_DI" bpmnElement="R_End1">
+        <dc:Bounds x="230" y="1535" width="40" height="40"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="65" y="1600" width="370" height="90"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="R_LogScores_DI" bpmnElement="R_LogScores">
+        <dc:Bounds x="470" y="1345" width="300" height="100"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="R_End2_DI" bpmnElement="R_End2">
+        <dc:Bounds x="600" y="1535" width="40" height="40"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="435" y="1600" width="370" height="90"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="R_MergeOff_DI" bpmnElement="R_MergeOff" isMarkerVisible="true">
+        <dc:Bounds x="1043" y="863" width="54" height="54"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="R_Disable_DI" bpmnElement="R_Disable">
+        <dc:Bounds x="920" y="1010" width="300" height="105"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="R_Read_DI" bpmnElement="R_Read">
+        <dc:Bounds x="920" y="1170" width="300" height="86"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="R_Empty_DI" bpmnElement="R_Empty" isMarkerVisible="true">
+        <dc:Bounds x="1043" y="1323" width="54" height="54"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1125" y="1260" width="300" height="65"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="R_Set3_DI" bpmnElement="R_Set3">
+        <dc:Bounds x="850" y="1480" width="260" height="86"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="R_Set4_DI" bpmnElement="R_Set4">
+        <dc:Bounds x="1160" y="1480" width="300" height="105"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="R_End3_DI" bpmnElement="R_End3">
+        <dc:Bounds x="960" y="1750" width="40" height="40"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="795" y="1815" width="370" height="90"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="R_End4_DI" bpmnElement="R_End4">
+        <dc:Bounds x="1290" y="1750" width="40" height="40"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1130" y="1815" width="360" height="90"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Recover_F01_DI" bpmnElement="Recover_F01">
+        <di:waypoint x="450.0" y="185"/>
+        <di:waypoint x="450.0" y="240"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Recover_F02_DI" bpmnElement="Recover_F02">
+        <di:waypoint x="450.0" y="340"/>
+        <di:waypoint x="450.0" y="400"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Recover_F03_DI" bpmnElement="Recover_F03">
+        <di:waypoint x="450.0" y="500"/>
+        <di:waypoint x="450.0" y="558"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Recover_F04_DI" bpmnElement="Recover_F04">
+        <di:waypoint x="450.0" y="612"/>
+        <di:waypoint x="450.0" y="700"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="465" y="635" width="60" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Recover_F05_DI" bpmnElement="Recover_F05">
+        <di:waypoint x="477" y="585.0"/>
+        <di:waypoint x="1070" y="585"/>
+        <di:waypoint x="1070.0" y="863"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="700" y="550" width="270" height="30"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Recover_F06_DI" bpmnElement="Recover_F06">
+        <di:waypoint x="450.0" y="800"/>
+        <di:waypoint x="450.0" y="863"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Recover_F07_DI" bpmnElement="Recover_F07">
+        <di:waypoint x="450.0" y="917"/>
+        <di:waypoint x="450.0" y="1010"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="465" y="945" width="60" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Recover_F08_DI" bpmnElement="Recover_F08">
+        <di:waypoint x="477" y="890.0"/>
+        <di:waypoint x="1043" y="890.0"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="625" y="855" width="370" height="30"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Recover_F09_DI" bpmnElement="Recover_F09">
+        <di:waypoint x="1070.0" y="917"/>
+        <di:waypoint x="1070.0" y="1010"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Recover_F10_DI" bpmnElement="Recover_F10">
+        <di:waypoint x="1070.0" y="1115"/>
+        <di:waypoint x="1070.0" y="1170"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Recover_F11_DI" bpmnElement="Recover_F11">
+        <di:waypoint x="1070.0" y="1256"/>
+        <di:waypoint x="1070.0" y="1323"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Recover_F12_DI" bpmnElement="Recover_F12">
+        <di:waypoint x="1070.0" y="1377"/>
+        <di:waypoint x="1070" y="1420"/>
+        <di:waypoint x="980" y="1420"/>
+        <di:waypoint x="980.0" y="1480"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="980" y="1388" width="60" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Recover_F13_DI" bpmnElement="Recover_F13">
+        <di:waypoint x="1097" y="1350.0"/>
+        <di:waypoint x="1310" y="1350"/>
+        <di:waypoint x="1310.0" y="1480"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1220" y="1418" width="210" height="30"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Recover_F14_DI" bpmnElement="Recover_F14">
+        <di:waypoint x="980.0" y="1566"/>
+        <di:waypoint x="980.0" y="1750"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Recover_F15_DI" bpmnElement="Recover_F15">
+        <di:waypoint x="1310.0" y="1585"/>
+        <di:waypoint x="1310.0" y="1750"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Recover_F16_DI" bpmnElement="Recover_F16">
+        <di:waypoint x="450.0" y="1115"/>
+        <di:waypoint x="450.0" y="1178"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Recover_F17_DI" bpmnElement="Recover_F17">
+        <di:waypoint x="423" y="1205.0"/>
+        <di:waypoint x="250" y="1205"/>
+        <di:waypoint x="250.0" y="1345"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="265" y="1260" width="60" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Recover_F18_DI" bpmnElement="Recover_F18">
+        <di:waypoint x="477" y="1205.0"/>
+        <di:waypoint x="620" y="1205"/>
+        <di:waypoint x="620.0" y="1345"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="635" y="1260" width="175" height="30"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Recover_F19_DI" bpmnElement="Recover_F19">
+        <di:waypoint x="250.0" y="1431"/>
+        <di:waypoint x="250.0" y="1535"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Recover_F20_DI" bpmnElement="Recover_F20">
+        <di:waypoint x="620.0" y="1445"/>
+        <di:waypoint x="620.0" y="1535"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+  <bpmndi:BPMNDiagram id="Process_Retrain_Diagram" name="01 / Автоматическое переобучение">
+    <bpmndi:BPMNPlane id="Process_Retrain_Plane" bpmnElement="Collaboration_Retrain">
+      <bpmndi:BPMNShape id="Participant_DBMonitor_DI" bpmnElement="Participant_DBMonitor" isHorizontal="false">
+        <dc:Bounds x="40" y="130" width="1140" height="1170"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Start_Timer_DI" bpmnElement="Start_Timer">
+        <dc:Bounds x="140" y="280" width="40" height="40"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="70" y="220" width="180" height="55"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Start_Manual_DI" bpmnElement="Start_Manual">
+        <dc:Bounds x="390" y="280" width="40" height="40"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="320" y="220" width="180" height="55"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Start_Missing_DI" bpmnElement="Start_Missing">
+        <dc:Bounds x="640" y="280" width="40" height="40"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="550" y="220" width="220" height="55"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Start_Change_DI" bpmnElement="Start_Change">
+        <dc:Bounds x="890" y="280" width="40" height="40"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="790" y="220" width="240" height="55"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Merge_Start_DI" bpmnElement="Merge_Start" isMarkerVisible="true">
+        <dc:Bounds x="383" y="383" width="54" height="54"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Inspect_DI" bpmnElement="Inspect">
+        <dc:Bounds x="270" y="460" width="280" height="86"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Inspect_Error_DI" bpmnElement="Inspect_Error">
+        <dc:Bounds x="530" y="500" width="40" height="40"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="585" y="500" width="90" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Pending_DI" bpmnElement="Pending" isMarkerVisible="true">
+        <dc:Bounds x="383" y="608" width="54" height="54"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="125" y="605" width="240" height="60"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Merge_Failure_DI" bpmnElement="Merge_Failure" isMarkerVisible="true">
+        <dc:Bounds x="873" y="608" width="54" height="54"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Publish_DI" bpmnElement="Publish" isExpanded="false">
+        <dc:Bounds x="270" y="745" width="280" height="110"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Publish_Error_DI" bpmnElement="Publish_Error">
+        <dc:Bounds x="530" y="810" width="40" height="40"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="570" y="775" width="165" height="35"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Recover_DI" bpmnElement="Recover" isExpanded="false">
+        <dc:Bounds x="760" y="745" width="280" height="110"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Notify_Success_DI" bpmnElement="Notify_Success">
+        <dc:Bounds x="270" y="945" width="280" height="100"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Success_DI" bpmnElement="End_Success">
+        <dc:Bounds x="390" y="1130" width="40" height="40"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="230" y="1190" width="360" height="85"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Notify_DI" bpmnElement="Notify">
+        <dc:Bounds x="760" y="945" width="280" height="100"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Handled_DI" bpmnElement="End_Handled">
+        <dc:Bounds x="880" y="1130" width="40" height="40"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="720" y="1190" width="360" height="85"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Process_Retrain_F01_DI" bpmnElement="Process_Retrain_F01">
+        <di:waypoint x="160.0" y="320"/>
+        <di:waypoint x="160" y="410"/>
+        <di:waypoint x="383" y="410.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Process_Retrain_F02_DI" bpmnElement="Process_Retrain_F02">
+        <di:waypoint x="410.0" y="320"/>
+        <di:waypoint x="410.0" y="383"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Process_Retrain_F03_DI" bpmnElement="Process_Retrain_F03">
+        <di:waypoint x="660.0" y="320"/>
+        <di:waypoint x="660" y="390"/>
+        <di:waypoint x="470" y="390"/>
+        <di:waypoint x="470" y="410"/>
+        <di:waypoint x="437" y="410.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Process_Retrain_F04_DI" bpmnElement="Process_Retrain_F04">
+        <di:waypoint x="910.0" y="320"/>
+        <di:waypoint x="910" y="430"/>
+        <di:waypoint x="470" y="430"/>
+        <di:waypoint x="470" y="410"/>
+        <di:waypoint x="437" y="410.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Process_Retrain_F05_DI" bpmnElement="Process_Retrain_F05">
+        <di:waypoint x="410.0" y="437"/>
+        <di:waypoint x="410.0" y="460"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Process_Retrain_F06_DI" bpmnElement="Process_Retrain_F06">
+        <di:waypoint x="410.0" y="546"/>
+        <di:waypoint x="410.0" y="608"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Process_Retrain_F07_DI" bpmnElement="Process_Retrain_F07">
+        <di:waypoint x="570" y="520.0"/>
+        <di:waypoint x="900" y="520"/>
+        <di:waypoint x="900.0" y="608"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Process_Retrain_F08_DI" bpmnElement="Process_Retrain_F08">
+        <di:waypoint x="410.0" y="662"/>
+        <di:waypoint x="410.0" y="745"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="425" y="685" width="70" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Process_Retrain_F09_DI" bpmnElement="Process_Retrain_F09">
+        <di:waypoint x="437" y="635.0"/>
+        <di:waypoint x="873" y="635.0"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="590" y="605" width="150" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Process_Retrain_F10_DI" bpmnElement="Process_Retrain_F10">
+        <di:waypoint x="410.0" y="855"/>
+        <di:waypoint x="410.0" y="945"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Process_Retrain_F11_DI" bpmnElement="Process_Retrain_F11">
+        <di:waypoint x="410.0" y="1045"/>
+        <di:waypoint x="410.0" y="1130"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Process_Retrain_F12_DI" bpmnElement="Process_Retrain_F12">
+        <di:waypoint x="570" y="830.0"/>
+        <di:waypoint x="680" y="830"/>
+        <di:waypoint x="680" y="690"/>
+        <di:waypoint x="900" y="690"/>
+        <di:waypoint x="900.0" y="662"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Process_Retrain_F13_DI" bpmnElement="Process_Retrain_F13">
+        <di:waypoint x="927" y="635.0"/>
+        <di:waypoint x="1100" y="635"/>
+        <di:waypoint x="1100" y="710"/>
+        <di:waypoint x="900" y="710"/>
+        <di:waypoint x="900.0" y="745"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Process_Retrain_F14_DI" bpmnElement="Process_Retrain_F14">
+        <di:waypoint x="900.0" y="855"/>
+        <di:waypoint x="900.0" y="945"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Process_Retrain_F15_DI" bpmnElement="Process_Retrain_F15">
+        <di:waypoint x="900.0" y="1045"/>
+        <di:waypoint x="900.0" y="1130"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+  <bpmndi:BPMNDiagram id="Publish_Diagram" name="02 / Обучение, валидация и публикация">
+    <bpmndi:BPMNPlane id="Publish_Plane" bpmnElement="Publish">
+      <bpmndi:BPMNShape id="Lane_Auto_DI" bpmnElement="Lane_Auto" isHorizontal="false">
+        <dc:Bounds x="40" y="130" width="700" height="2300"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Human_DI" bpmnElement="Lane_Human" isHorizontal="false">
+        <dc:Bounds x="740" y="130" width="440" height="2300"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="P_Start_DI" bpmnElement="P_Start">
+        <dc:Bounds x="370" y="205" width="40" height="40"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="440" y="205" width="230" height="30"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="P_Data_DI" bpmnElement="P_Data">
+        <dc:Bounds x="250" y="300" width="280" height="100"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="P_Data_OK_DI" bpmnElement="P_Data_OK" isMarkerVisible="true">
+        <dc:Bounds x="363" y="443" width="54" height="54"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="70" y="440" width="265" height="60"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="P_Train_DI" bpmnElement="P_Train">
+        <dc:Bounds x="250" y="560" width="280" height="100"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="P_Quality_DI" bpmnElement="P_Quality">
+        <dc:Bounds x="250" y="720" width="280" height="100"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="P_Quality_OK_DI" bpmnElement="P_Quality_OK" isMarkerVisible="true">
+        <dc:Bounds x="363" y="873" width="54" height="54"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="55" y="870" width="280" height="60"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="P_Review_DI" bpmnElement="P_Review">
+        <dc:Bounds x="815" y="1020" width="290" height="110"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="P_Approved_DI" bpmnElement="P_Approved" isMarkerVisible="true">
+        <dc:Bounds x="933" y="1193" width="54" height="54"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1010" y="1190" width="155" height="60"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="P_Register_DI" bpmnElement="P_Register">
+        <dc:Bounds x="250" y="1330" width="280" height="100"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="P_Window_DI" bpmnElement="P_Window">
+        <dc:Bounds x="250" y="1490" width="280" height="110"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="P_Deploy_DI" bpmnElement="P_Deploy">
+        <dc:Bounds x="250" y="1660" width="280" height="100"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="P_Scores_DI" bpmnElement="P_Scores">
+        <dc:Bounds x="250" y="1820" width="280" height="100"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="P_Coherent_DI" bpmnElement="P_Coherent" isMarkerVisible="true">
+        <dc:Bounds x="363" y="1973" width="54" height="54"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="130" y="1970" width="200" height="60"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="P_Resume_DI" bpmnElement="P_Resume">
+        <dc:Bounds x="250" y="2130" width="280" height="86"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="P_End_DI" bpmnElement="P_End">
+        <dc:Bounds x="370" y="2310" width="40" height="40"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="440" y="2305" width="255" height="65"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="P_RejectData_DI" bpmnElement="P_RejectData">
+        <dc:Bounds x="630" y="450" width="40" height="40"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="510" y="505" width="225" height="55"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="P_RejectQuality_DI" bpmnElement="P_RejectQuality">
+        <dc:Bounds x="630" y="880" width="40" height="40"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="510" y="940" width="225" height="60"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="P_RejectHuman_DI" bpmnElement="P_RejectHuman">
+        <dc:Bounds x="940" y="1380" width="40" height="40"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="805" y="1440" width="310" height="60"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="P_RejectScores_DI" bpmnElement="P_RejectScores">
+        <dc:Bounds x="630" y="1980" width="40" height="40"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="530" y="2045" width="205" height="55"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Publish_F01_DI" bpmnElement="Publish_F01">
+        <di:waypoint x="390.0" y="245"/>
+        <di:waypoint x="390.0" y="300"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Publish_F02_DI" bpmnElement="Publish_F02">
+        <di:waypoint x="390.0" y="400"/>
+        <di:waypoint x="390.0" y="443"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Publish_F03_DI" bpmnElement="Publish_F03">
+        <di:waypoint x="390.0" y="497"/>
+        <di:waypoint x="390.0" y="560"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="405" y="515" width="50" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Publish_F04_DI" bpmnElement="Publish_F04">
+        <di:waypoint x="417" y="470.0"/>
+        <di:waypoint x="630" y="470.0"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="510" y="440" width="60" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Publish_F05_DI" bpmnElement="Publish_F05">
+        <di:waypoint x="390.0" y="660"/>
+        <di:waypoint x="390.0" y="720"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Publish_F06_DI" bpmnElement="Publish_F06">
+        <di:waypoint x="390.0" y="820"/>
+        <di:waypoint x="390.0" y="873"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Publish_F07_DI" bpmnElement="Publish_F07">
+        <di:waypoint x="390.0" y="927"/>
+        <di:waypoint x="390" y="1075"/>
+        <di:waypoint x="815" y="1075.0"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="405" y="990" width="50" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Publish_F08_DI" bpmnElement="Publish_F08">
+        <di:waypoint x="417" y="900.0"/>
+        <di:waypoint x="630" y="900.0"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="510" y="870" width="60" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Publish_F09_DI" bpmnElement="Publish_F09">
+        <di:waypoint x="960.0" y="1130"/>
+        <di:waypoint x="960.0" y="1193"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Publish_F10_DI" bpmnElement="Publish_F10">
+        <di:waypoint x="933" y="1220.0"/>
+        <di:waypoint x="390" y="1220"/>
+        <di:waypoint x="390.0" y="1330"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="775" y="1188" width="60" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Publish_F11_DI" bpmnElement="Publish_F11">
+        <di:waypoint x="960.0" y="1247"/>
+        <di:waypoint x="960.0" y="1380"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="975" y="1290" width="65" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Publish_F12_DI" bpmnElement="Publish_F12">
+        <di:waypoint x="390.0" y="1430"/>
+        <di:waypoint x="390.0" y="1490"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Publish_F13_DI" bpmnElement="Publish_F13">
+        <di:waypoint x="390.0" y="1600"/>
+        <di:waypoint x="390.0" y="1660"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Publish_F14_DI" bpmnElement="Publish_F14">
+        <di:waypoint x="390.0" y="1760"/>
+        <di:waypoint x="390.0" y="1820"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Publish_F15_DI" bpmnElement="Publish_F15">
+        <di:waypoint x="390.0" y="1920"/>
+        <di:waypoint x="390.0" y="1973"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Publish_F16_DI" bpmnElement="Publish_F16">
+        <di:waypoint x="390.0" y="2027"/>
+        <di:waypoint x="390.0" y="2130"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="405" y="2050" width="60" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Publish_F17_DI" bpmnElement="Publish_F17">
+        <di:waypoint x="417" y="2000.0"/>
+        <di:waypoint x="630" y="2000.0"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="525" y="1970" width="60" height="25"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Publish_F18_DI" bpmnElement="Publish_F18">
+        <di:waypoint x="390.0" y="2216"/>
+        <di:waypoint x="390.0" y="2310"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

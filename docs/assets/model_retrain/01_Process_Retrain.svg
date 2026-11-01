@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1220" height="1380" viewBox="0 0 1220 1380">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#253449"/></marker></defs>
+<rect width="100%" height="100%" fill="white"/>
+<style>text{font-family:"DejaVu Sans",Arial,sans-serif;fill:#17283c} .flow{fill:none;stroke:#253449;stroke-width:1.8;marker-end:url(#arrow)}</style>
+<text x="45" y="57.019999999999996" text-anchor="start" font-size="28" font-weight="bold" style="fill:#17283c">01 / Автоматическое переобучение</text>
+<text x="45" y="99.28" text-anchor="start" font-size="17" font-weight="normal" style="fill:#52677f">BPMN 2.0 • предлагаемый процесс • одна пара «проект, таблица»</text>
+<rect x="40" y="130" width="1140" height="1170" fill="white" stroke="#253449" stroke-width="2"/>
+<path d="M40 180 H1180" stroke="#253449" stroke-width="1.5"/>
+<text x="610.0" y="162.48" text-anchor="middle" font-size="22" font-weight="bold" style="fill:#17283c">DB Monitor — управление моделями</text>
+<polyline class="flow" points="160.0,320 160,410 383,410.0"/>
+<polyline class="flow" points="410.0,320 410.0,383"/>
+<polyline class="flow" points="660.0,320 660,390 470,390 470,410 437,410.0"/>
+<polyline class="flow" points="910.0,320 910,430 470,430 470,410 437,410.0"/>
+<polyline class="flow" points="410.0,437 410.0,460"/>
+<polyline class="flow" points="410.0,546 410.0,608"/>
+<polyline class="flow" points="570,520.0 900,520 900.0,608"/>
+<polyline class="flow" points="410.0,662 410.0,745"/>
+<path d="M404.0 670.0 L416.0 680.0" stroke="#253449" stroke-width="1.8"/>
+<polyline class="flow" points="437,635.0 873,635.0"/>
+<polyline class="flow" points="410.0,855 410.0,945"/>
+<polyline class="flow" points="410.0,1045 410.0,1130"/>
+<polyline class="flow" points="570,830.0 680,830 680,690 900,690 900.0,662"/>
+<polyline class="flow" points="927,635.0 1100,635 1100,710 900,710 900.0,745"/>
+<polyline class="flow" points="900.0,855 900.0,945"/>
+<polyline class="flow" points="900.0,1045 900.0,1130"/>
+<circle cx="160.0" cy="300.0" r="20" fill="#fff" stroke="#253449" stroke-width="1.8"/>
+<circle cx="160.0" cy="300.0" r="14" fill="none" stroke="#253449" stroke-width="1.3"/><path d="M160.0 290.0 V300.0 L167.0 304.0" fill="none" stroke="#253449" stroke-width="1.5"/>
+<path d="M171.0 300.0 L173.0 300.0" stroke="#253449"/>
+<path d="M169.52627944162882 305.5 L171.2583302491977 306.5" stroke="#253449"/>
+<path d="M165.5 309.52627944162884 L166.5 311.2583302491977" stroke="#253449"/>
+<path d="M160.0 311.0 L160.0 313.0" stroke="#253449"/>
+<path d="M154.5 309.52627944162884 L153.5 311.2583302491977" stroke="#253449"/>
+<path d="M150.47372055837118 305.5 L148.7416697508023 306.5" stroke="#253449"/>
+<path d="M149.0 300.0 L147.0 300.0" stroke="#253449"/>
+<path d="M150.47372055837118 294.5 L148.7416697508023 293.5" stroke="#253449"/>
+<path d="M154.5 290.47372055837116 L153.5 288.7416697508023" stroke="#253449"/>
+<path d="M160.0 289.0 L160.0 287.0" stroke="#253449"/>
+<path d="M165.5 290.47372055837116 L166.5 288.7416697508023" stroke="#253449"/>
+<path d="M169.52627944162882 294.5 L171.25833024919768 293.5" stroke="#253449"/>
+<text x="160.0" y="242.06" text-anchor="middle" font-size="17" font-weight="normal" style="fill:#17283c">Каждую ночь</text>
+<text x="160.0" y="264.5" text-anchor="middle" font-size="17" font-weight="normal" style="fill:#17283c">в 04:00</text>
+<circle cx="410.0" cy="300.0" r="20" fill="#fff" stroke="#253449" stroke-width="1.8"/>
+<text x="410.0" y="242.06" text-anchor="middle" font-size="17" font-weight="normal" style="fill:#17283c">Явный ручной</text>
+<text x="410.0" y="264.5" text-anchor="middle" font-size="17" font-weight="normal" style="fill:#17283c">запуск</text>
+<circle cx="660.0" cy="300.0" r="20" fill="#fff" stroke="#253449" stroke-width="1.8"/>
+<rect x="652.0" y="289.0" width="16" height="22" fill="white" stroke="#253449" stroke-width="1.2"/>
+<path d="M655.0 294.0 H665.0" stroke="#253449"/>
+<path d="M655.0 298.0 H665.0" stroke="#253449"/>
+<path d="M655.0 302.0 H665.0" stroke="#253449"/>
+<path d="M655.0 306.0 H665.0" stroke="#253449"/>
+<text x="660.0" y="242.06" text-anchor="middle" font-size="17" font-weight="normal" style="fill:#17283c">Нет модели;</text>
+<text x="660.0" y="264.5" text-anchor="middle" font-size="17" font-weight="normal" style="fill:#17283c">нет режима отказа</text>
+<circle cx="910.0" cy="300.0" r="20" fill="#fff" stroke="#253449" stroke-width="1.8"/>
+<rect x="902.0" y="289.0" width="16" height="22" fill="white" stroke="#253449" stroke-width="1.2"/>
+<path d="M905.0 294.0 H915.0" stroke="#253449"/>
+<path d="M905.0 298.0 H915.0" stroke="#253449"/>
+<path d="M905.0 302.0 H915.0" stroke="#253449"/>
+<path d="M905.0 306.0 H915.0" stroke="#253449"/>
+<text x="910.0" y="242.06" text-anchor="middle" font-size="17" font-weight="normal" style="fill:#17283c">Подтверждён дрейф;</text>
+<text x="910.0" y="264.5" text-anchor="middle" font-size="17" font-weight="normal" style="fill:#17283c">нет режима отказа</text>
+<polygon points="410.0,383 437,410.0 410.0,437 383,410.0" fill="#fff9e8" stroke="#253449" stroke-width="1.8"/><path d="M401.0 400.0 L419.0 420.0 M419.0 400.0 L401.0 420.0" stroke="#253449" stroke-width="2.8"/>
+<rect x="270" y="460" width="280" height="86" rx="12" fill="#eff6fc" stroke="#253449" stroke-width="1.8"/>
+<polygon points="297.0,480.0 299.8078528040323,481.9509032201613 299.23879532511285,483.82683432365087 295.82028728611783,483.88899163113723 294.9497474683058,484.9497474683058 295.555702330196,488.31469612302544 293.82683432365087,489.23879532511285 291.3656322541129,486.8654969628226 290.0,487.0 288.0490967798387,489.8078528040323 286.17316567634913,489.23879532511285 286.11100836886277,485.82028728611783 285.0502525316942,484.9497474683058 281.68530387697456,485.555702330196 280.76120467488715,483.82683432365087 283.1345030371774,481.3656322541129 283.0,480.0 280.1921471959677,478.0490967798387 280.76120467488715,476.17316567634913 284.17971271388217,476.11100836886277 285.0502525316942,475.0502525316942 284.444297669804,471.68530387697456 286.1731656763491,470.76120467488715 288.6343677458871,473.1345030371774 290.0,473.0 291.9509032201613,470.1921471959677 293.8268343236509,470.76120467488715 293.88899163113723,474.17971271388217 294.9497474683058,475.0502525316942 298.31469612302544,474.444297669804 299.23879532511285,476.1731656763491 296.8654969628226,478.6343677458871" fill="white" stroke="#253449" stroke-width="1.2"/><circle cx="290" cy="480" r="3" fill="white" stroke="#253449" stroke-width="1.2"/>
+<text x="426.0" y="497.88" text-anchor="middle" font-size="16" font-weight="normal" style="fill:#17283c">1. Определить состояние</text>
+<text x="426.0" y="519.0" text-anchor="middle" font-size="16" font-weight="normal" style="fill:#17283c">и зафиксировать контекст</text>
+<circle cx="550.0" cy="520.0" r="20" fill="#fff" stroke="#253449" stroke-width="1.8"/>
+<circle cx="550.0" cy="520.0" r="16" fill="none" stroke="#253449" stroke-width="1.5"/>
+<path d="M541.0 529.0 L547.0 511.0 L552.0 518.0 L559.0 510.0 L553.0 530.0 L548.0 523.0 Z" fill="white" stroke="#253449" stroke-width="1.3"/>
+<text x="630.0" y="518.28" text-anchor="middle" font-size="17" font-weight="normal" style="fill:#17283c">Ошибка</text>
+<polygon points="410.0,608 437,635.0 410.0,662 383,635.0" fill="#fff9e8" stroke="#253449" stroke-width="1.8"/><path d="M401.0 625.0 L419.0 645.0 M419.0 625.0 L401.0 645.0" stroke="#253449" stroke-width="2.8"/>
+<text x="245.0" y="629.56" text-anchor="middle" font-size="17" font-weight="normal" style="fill:#17283c">Восстановление</text>
+<text x="245.0" y="652.0" text-anchor="middle" font-size="17" font-weight="normal" style="fill:#17283c">не завершено?</text>
+<polygon points="900.0,608 927,635.0 900.0,662 873,635.0" fill="#fff9e8" stroke="#253449" stroke-width="1.8"/><path d="M891.0 625.0 L909.0 645.0 M909.0 625.0 L891.0 645.0" stroke="#253449" stroke-width="2.8"/>
+<rect x="270" y="745" width="280" height="110" rx="12" fill="#eef7f3" stroke="#253449" stroke-width="1.8"/>
+<rect x="401.0" y="832" width="18" height="18" fill="white" stroke="#253449" stroke-width="1.4"/><path d="M404.0 841 H416.0 M410.0 835 V847" stroke="#253449" stroke-width="1.4"/>
+<text x="410.0" y="775.32" text-anchor="middle" font-size="16" font-weight="normal" style="fill:#17283c">2–7. Подготовить кандидата,</text>
+<text x="410.0" y="796.44" text-anchor="middle" font-size="16" font-weight="normal" style="fill:#17283c">проверить и опубликовать</text>
+<text x="410.0" y="817.5600000000001" text-anchor="middle" font-size="16" font-weight="normal" style="fill:#17283c">Подробности — схема 02</text>
+<circle cx="550.0" cy="830.0" r="20" fill="#fff" stroke="#253449" stroke-width="1.8"/>
+<circle cx="550.0" cy="830.0" r="16" fill="none" stroke="#253449" stroke-width="1.5"/>
+<path d="M541.0 839.0 L547.0 821.0 L552.0 828.0 L559.0 820.0 L553.0 840.0 L548.0 833.0 Z" fill="white" stroke="#253449" stroke-width="1.3"/>
+<text x="652.5" y="798.28" text-anchor="middle" font-size="17" font-weight="normal" style="fill:#17283c">Ошибка / отказ</text>
+<rect x="760" y="745" width="280" height="110" rx="12" fill="#eef7f3" stroke="#253449" stroke-width="1.8"/>
+<rect x="891.0" y="832" width="18" height="18" fill="white" stroke="#253449" stroke-width="1.4"/><path d="M894.0 841 H906.0 M900.0 835 V847" stroke="#253449" stroke-width="1.4"/>
+<text x="900.0" y="774.34" text-anchor="middle" font-size="17" font-weight="normal" style="fill:#17283c">8. Восстановить безопасное</text>
+<text x="900.0" y="796.7800000000001" text-anchor="middle" font-size="17" font-weight="normal" style="fill:#17283c">состояние модели и оценок</text>
+<text x="900.0" y="819.22" text-anchor="middle" font-size="17" font-weight="normal" style="fill:#17283c">Подробности — схема 03</text>
+<rect x="270" y="945" width="280" height="100" rx="12" fill="#eff6fc" stroke="#253449" stroke-width="1.8"/>
+<polygon points="297.0,965.0 299.8078528040323,966.9509032201613 299.23879532511285,968.8268343236509 295.82028728611783,968.8889916311372 294.9497474683058,969.9497474683059 295.555702330196,973.3146961230254 293.82683432365087,974.2387953251128 291.3656322541129,971.8654969628226 290.0,972.0 288.0490967798387,974.8078528040323 286.17316567634913,974.2387953251128 286.11100836886277,970.8202872861178 285.0502525316942,969.9497474683059 281.68530387697456,970.555702330196 280.76120467488715,968.8268343236509 283.1345030371774,966.3656322541129 283.0,965.0 280.1921471959677,963.0490967798387 280.76120467488715,961.1731656763491 284.17971271388217,961.1110083688628 285.0502525316942,960.0502525316941 284.444297669804,956.6853038769746 286.1731656763491,955.7612046748872 288.6343677458871,958.1345030371774 290.0,958.0 291.9509032201613,955.1921471959677 293.8268343236509,955.7612046748872 293.88899163113723,959.1797127138822 294.9497474683058,960.0502525316941 298.31469612302544,959.444297669804 299.23879532511285,961.1731656763491 296.8654969628226,963.6343677458871" fill="white" stroke="#253449" stroke-width="1.2"/><circle cx="290" cy="965" r="3" fill="white" stroke="#253449" stroke-width="1.2"/>
+<text x="426.0" y="981.28" text-anchor="middle" font-size="14" font-weight="normal" style="fill:#17283c">Зафиксировать новую версию;</text>
+<text x="426.0" y="999.76" text-anchor="middle" font-size="14" font-weight="normal" style="fill:#17283c">уведомить инженера</text>
+<text x="426.0" y="1018.24" text-anchor="middle" font-size="14" font-weight="normal" style="fill:#17283c">в Telegram</text>
+<circle cx="410.0" cy="1150.0" r="20" fill="#fff" stroke="#253449" stroke-width="4"/>
+<text x="410.0" y="1215.84" text-anchor="middle" font-size="17" font-weight="normal" style="fill:#17283c">Новая модель доступна;</text>
+<text x="410.0" y="1238.28" text-anchor="middle" font-size="17" font-weight="normal" style="fill:#17283c">оценки согласованы;</text>
+<text x="410.0" y="1260.72" text-anchor="middle" font-size="17" font-weight="normal" style="fill:#17283c">обычная оценка разрешена</text>
+<rect x="760" y="945" width="280" height="100" rx="12" fill="#eff6fc" stroke="#253449" stroke-width="1.8"/>
+<polygon points="787.0,965.0 789.8078528040323,966.9509032201613 789.2387953251128,968.8268343236509 785.8202872861178,968.8889916311372 784.9497474683059,969.9497474683059 785.555702330196,973.3146961230254 783.8268343236509,974.2387953251128 781.3656322541129,971.8654969628226 780.0,972.0 778.0490967798387,974.8078528040323 776.1731656763491,974.2387953251128 776.1110083688628,970.8202872861178 775.0502525316941,969.9497474683059 771.6853038769746,970.555702330196 770.7612046748872,968.8268343236509 773.1345030371774,966.3656322541129 773.0,965.0 770.1921471959677,963.0490967798387 770.7612046748872,961.1731656763491 774.1797127138822,961.1110083688628 775.0502525316941,960.0502525316941 774.444297669804,956.6853038769746 776.1731656763491,955.7612046748872 778.6343677458871,958.1345030371774 780.0,958.0 781.9509032201613,955.1921471959677 783.8268343236509,955.7612046748872 783.8889916311372,959.1797127138822 784.9497474683059,960.0502525316941 788.3146961230254,959.444297669804 789.2387953251128,961.1731656763491 786.8654969628226,963.6343677458871" fill="white" stroke="#253449" stroke-width="1.2"/><circle cx="780" cy="965" r="3" fill="white" stroke="#253449" stroke-width="1.2"/>
+<text x="916.0" y="981.28" text-anchor="middle" font-size="14" font-weight="normal" style="fill:#17283c">Зафиксировать исход R1–R4;</text>
+<text x="916.0" y="999.76" text-anchor="middle" font-size="14" font-weight="normal" style="fill:#17283c">попробовать уведомить</text>
+<text x="916.0" y="1018.24" text-anchor="middle" font-size="14" font-weight="normal" style="fill:#17283c">инженера в Telegram</text>
+<circle cx="900.0" cy="1150.0" r="20" fill="#fff" stroke="#253449" stroke-width="4"/>
+<text x="900.0" y="1215.84" text-anchor="middle" font-size="17" font-weight="normal" style="fill:#17283c">Обработка отказа завершена;</text>
+<text x="900.0" y="1238.28" text-anchor="middle" font-size="17" font-weight="normal" style="fill:#17283c">фактический исход — R1–R4</text>
+<text x="900.0" y="1260.72" text-anchor="middle" font-size="17" font-weight="normal" style="fill:#17283c">(см. схему 03)</text>
+<rect x="425" y="685" width="70" height="25" rx="3" fill="white" fill-opacity="0.94"/>
+<text x="460.0" y="702.94" text-anchor="middle" font-size="16" font-weight="normal" style="fill:#17283c">Нет</text>
+<rect x="590" y="605" width="150" height="25" rx="3" fill="white" fill-opacity="0.94"/>
+<text x="665.0" y="622.94" text-anchor="middle" font-size="16" font-weight="normal" style="fill:#17283c">Да: R2 / R4</text>
+<text x="55" y="1331.78" text-anchor="start" font-size="17" font-weight="normal" style="fill:#52677f">«+» раскрывается на отдельной схеме. Двойной круг с молнией — перехват ошибки.</text>
+</svg>
